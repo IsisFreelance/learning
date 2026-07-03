@@ -25,6 +25,33 @@ body {
   line-height: 1.6;
 }
 
+.nav {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(216, 180, 254, 0.2);
+}
+
+.nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding-bottom: 0.25rem;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.nav a:hover {
+  color: var(--purple);
+}
+
+.nav a.active {
+  color: var(--purple);
+  border-bottom-color: var(--purple-glow);
+}
+
 .hero {
   text-align: center;
   padding: 5rem 1.5rem 4rem;
@@ -91,6 +118,54 @@ footer {
   font-size: 0.9rem;
 }
 
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+}
+
+.project-card {
+  background: var(--bg-section);
+  border: 1px solid rgba(216, 180, 254, 0.3);
+  border-radius: 12px;
+  padding: 1.5rem;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 30px rgba(147, 51, 234, 0.15);
+}
+
+.project-card h3 {
+  margin-top: 0;
+  color: var(--purple);
+  text-shadow: 0 0 12px rgba(192, 132, 252, 0.6);
+}
+
+.project-card p {
+  color: var(--text-muted);
+}
+
+.project-card .tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  margin: 1rem 0;
+  list-style: none;
+}
+
+.project-card .tags li {
+  background: rgba(216, 180, 254, 0.15);
+  border: 1px solid rgba(216, 180, 254, 0.3);
+  color: var(--purple);
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+.project-card a {
+  color: var(--purple-glow);
+  font-weight: 600;
+}
+
 @media (max-width: 480px) {
   .hero h1 {
     font-size: 2.2rem;
@@ -98,5 +173,9 @@ footer {
 
   .section {
     padding: 1.5rem;
+  }
+
+  .nav {
+    gap: 1.25rem;
   }
 }
