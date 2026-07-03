@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>[Your Name] — Personal Page</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="hero">
+    <h1>[Your Name]</h1>
+    <p class="tagline">[Add a short tagline about yourself — e.g. "Aspiring developer, lifelong learner."]</p>
+  </header>
+
+  <main>
+    <section class="section" id="trajectory">
+      <h2>My Trajectory</h2>
+      <p>[Describe where you started — e.g. your background before you began this path.]</p>
+      <p>[Describe the key steps or milestones that got you here.]</p>
+      <p>[Describe where you are right now.]</p>
+    </section>
+
+    <section class="section" id="goals">
+      <h2>Current Goals</h2>
+      <ul class="goals-list">
+        <li>[Goal 1 — e.g. "Learn how to build and deploy web apps."]</li>
+        <li>[Goal 2]</li>
+        <li>[Goal 3]</li>
+        <li>[Goal 4]</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>[Your Name] &middot; <span id="year"></span></p>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+
+</body>
+</html>
