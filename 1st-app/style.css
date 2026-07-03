@@ -164,6 +164,11 @@ footer {
 .project-card a {
   color: var(--purple-glow);
   font-weight: 600;
+  text-decoration: none;
+}
+
+.project-card a:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 480px) {
