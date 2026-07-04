@@ -124,3 +124,79 @@ footer {
   color: var(--text-muted);
   font-size: 0.9rem;
 }
+
+.signout-link {
+  background: none;
+  border: none;
+  color: var(--purple-glow);
+  font-size: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.auth-form h2 {
+  margin-top: 0;
+  color: var(--purple);
+  text-shadow: 0 0 12px rgba(192, 132, 252, 0.6);
+  text-align: center;
+}
+
+.auth-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.auth-form input {
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid rgba(216, 180, 254, 0.4);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.auth-form input::placeholder {
+  color: var(--text-muted);
+}
+
+.auth-form form button {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--purple-dark);
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-form form button:hover {
+  background: var(--purple-glow);
+}
+
+.auth-form form button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-error {
+  color: #fca5a5;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.auth-switch {
+  display: block;
+  margin: 1.25rem auto 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.auth-switch:hover {
+  color: var(--purple-glow);
+}

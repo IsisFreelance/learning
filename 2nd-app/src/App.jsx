@@ -1,14 +1,30 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
+import Auth from './Auth'
 import './App.css'
 
 function App() {
+  const [session, setSession] = useState(null)
+  const [sessionLoaded, setSessionLoaded] = useState(false)
   const [tasks, setTasks] = useState([])
   const [newTask, setNewTask] = useState('')
 
   useEffect(() => {
-    loadTasks()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session)
+      setSessionLoaded(true)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (session) loadTasks()
+  }, [session])
 
   async function loadTasks() {
     const { data, error } = await supabase
@@ -29,7 +45,7 @@ function App() {
 
     const { error } = await supabase
       .from('todos')
-      .insert({ task: newTask.trim() })
+      .insert({ task: newTask.trim(), user_id: session.user.id })
 
     if (error) {
       console.error('Error adding task:', error)
@@ -65,11 +81,35 @@ function App() {
     loadTasks()
   }
 
+  if (!sessionLoaded) {
+    return null
+  }
+
+  if (!session) {
+    return (
+      <>
+        <header className="hero">
+          <h1>My To-Do List</h1>
+          <p className="tagline">Log in or sign up to see your own private list.</p>
+        </header>
+        <Auth />
+        <footer>
+          <p>2nd-app &middot; React + Supabase</p>
+        </footer>
+      </>
+    )
+  }
+
   return (
     <>
       <header className="hero">
         <h1>My To-Do List</h1>
-        <p className="tagline">Tasks are saved in a real database — refresh, and they'll still be here.</p>
+        <p className="tagline">
+          Logged in as {session.user.email} &middot;{' '}
+          <button className="signout-link" onClick={() => supabase.auth.signOut()}>
+            Log out
+          </button>
+        </p>
       </header>
 
       <main>
