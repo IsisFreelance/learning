@@ -1,0 +1,45 @@
+:root {
+  --teal: #2bb3a3;
+  --teal-dark: #1f8f82;
+  --coral: #ff6b5e;
+  --slate: #33414a;
+  --slate-soft: #5b6b74;
+  --bg: #ffffff;
+  --bg-soft: #f2faf9;
+  --radius-lg: 24px;
+  --radius-md: 16px;
+  --shadow-soft: 0 10px 30px rgba(43, 179, 163, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Poppins', 'Segoe UI', Roboto, sans-serif;
+  color: var(--slate);
+  background: var(--bg);
+  line-height: 1.6;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+#root {
+  overflow-x: hidden;
+}
