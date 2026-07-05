@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bright Harbor Dental — Isis Akueran</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <nav class="nav">
+    <a href="index.html">Home</a>
+    <a href="projects.html" class="active">Projects</a>
+  </nav>
+
+  <header class="hero">
+    <h1>Bright Harbor Dental</h1>
+    <p class="tagline">A practice project for a fictional dental practice — not a real client.</p>
+  </header>
+
+  <main>
+    <section class="section">
+      <h2>About this project</h2>
+      <p>
+        Bright Harbor Dental is a website built for a made-up dental practice, designed to
+        show a full booking experience end to end. Visitors can browse services, book an
+        appointment across one or more services, and receive a confirmation with a unique
+        booking reference — with built-in protection against two people booking the same
+        time slot.
+      </p>
+      <p>
+        Behind the scenes, the practice owner has a private, login-protected dashboard to
+        review every booking and mark it Confirmed or Cancelled — access enforced at the
+        database level, not just hidden in the interface.
+      </p>
+      <ul class="tags">
+        <li>React</li>
+        <li>Firebase (Firestore + Auth)</li>
+        <li>Vercel</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>Video walkthrough</h2>
+      <!-- Replace this placeholder with the Loom embed code, e.g.:
+           <iframe src="https://www.loom.com/embed/YOUR_VIDEO_ID" frameborder="0"
+             allowfullscreen style="width:100%; aspect-ratio:16/9; border-radius:12px;"></iframe> -->
+      <div class="video-placeholder">Video walkthrough coming soon</div>
+    </section>
+
+    <section class="section" style="text-align: center;">
+      <a class="btn btn-primary" href="https://learning-ten-alpha.vercel.app/" target="_blank" rel="noopener">View live site →</a>
+    </section>
+  </main>
+
+  <p style="text-align: center;"><a class="btn btn-secondary" href="projects.html">← Back to Projects</a></p>
+
+  <footer>
+    <p>Isis Akueran &middot; <span id="year"></span></p>
+  </footer>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+
+</body>
+</html>

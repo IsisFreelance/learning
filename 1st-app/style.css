@@ -171,6 +171,62 @@ footer {
   text-decoration: underline;
 }
 
+.badge {
+  display: inline-block;
+  background: rgba(245, 240, 255, 0.1);
+  border: 1px solid rgba(216, 180, 254, 0.3);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  margin: 0.5rem 0;
+}
+
+.btn {
+  display: inline-block;
+  font-weight: 600;
+  padding: 0.7rem 1.6rem;
+  border-radius: 999px;
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+
+.btn-primary {
+  background: var(--purple-dark);
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(147, 51, 234, 0.45);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 30px rgba(192, 132, 252, 0.65);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid rgba(216, 180, 254, 0.35);
+}
+
+.btn-secondary:hover {
+  color: var(--purple);
+  border-color: var(--purple-glow);
+}
+
+.video-placeholder {
+  border: 2px dashed rgba(216, 180, 254, 0.4);
+  border-radius: 12px;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 @media (max-width: 480px) {
   .hero h1 {
     font-size: 2.2rem;
