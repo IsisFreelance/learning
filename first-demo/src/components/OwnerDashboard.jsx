@@ -142,6 +142,9 @@ function OwnerDashboard() {
                   {b.date} &middot; {formatTime12h(hhmmToMinutes(b.startTime))} –{' '}
                   {formatTime12h(hhmmToMinutes(b.endTime))}
                 </p>
+                <p className="patient-confirmation">
+                  {b.confirmedByPatient ? 'Patient confirmed ✓' : 'Awaiting patient confirmation'}
+                </p>
                 <div className="booking-actions">
                   <button
                     disabled={status === 'Confirmed' || updatingId === b.id}

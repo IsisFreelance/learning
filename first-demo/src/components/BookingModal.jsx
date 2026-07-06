@@ -90,7 +90,7 @@ function BookingModal({ onClose }) {
     setSubmitting(true)
     setErrorMessage('')
     try {
-      const reference = await createBooking({
+      const { reference, bookingId } = await createBooking({
         services: selectedServices,
         totalMinutes,
         date,
@@ -113,6 +113,7 @@ function BookingModal({ onClose }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          bookingId,
           to: email.trim(),
           name: name.trim(),
           reference,

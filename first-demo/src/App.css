@@ -430,6 +430,12 @@
   font-size: 0.95rem;
 }
 
+.patient-confirmation {
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--slate-soft);
+}
+
 .booking-actions {
   display: flex;
   gap: 0.75rem;

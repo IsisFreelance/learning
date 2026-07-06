@@ -126,7 +126,7 @@ export async function createBooking({ services, totalMinutes, date, startMinutes
     })
     transaction.set(counterRef, { count: nextCount })
 
-    return reference
+    return { reference, bookingId: bookingRef.id }
   })
 }
 
