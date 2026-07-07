@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import * as Sentry from '@sentry/react'
 import { auth } from '../firebaseAuthClient'
 import {
   deleteBooking,
@@ -127,6 +128,7 @@ function OwnerDashboard() {
       await deleteBooking(booking)
     } catch (err) {
       console.error('Failed to delete booking:', err)
+      Sentry.captureException(err)
       setActionError('Could not delete that booking. Please try again.')
     }
     setUpdatingId(null)

@@ -1,3 +1,4 @@
+import Sentry from './lib/sentry.js'
 import { adminDb } from './lib/firebaseAdmin.js'
 import { deleteCalendarEvent } from './lib/googleCalendar.js'
 import { sendCancellationEmail } from './lib/sendEmail.js'
@@ -52,6 +53,7 @@ export default async function handler(req, res) {
       calendarDeleted = true
     } catch (err) {
       console.error('Failed to delete Google Calendar event:', err)
+      Sentry.captureException(err)
     }
   }
 
@@ -69,6 +71,7 @@ export default async function handler(req, res) {
     emailSent = true
   } catch (err) {
     console.error('Failed to send cancellation email:', err)
+    Sentry.captureException(err)
   }
 
   res.status(200).json({ ok: true, hadEvent, calendarDeleted, emailSent })

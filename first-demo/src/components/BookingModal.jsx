@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import * as Sentry from '@sentry/react'
 import { SERVICES } from '../data/services'
 import {
   computeAvailableStartTimes,
@@ -113,7 +114,10 @@ function BookingModal({ onClose }) {
           startTime: minutesToHHMM(Number(startMinutes)),
           endTime: minutesToHHMM(Number(startMinutes) + totalMinutes),
         }),
-      }).catch(console.error)
+      }).catch((err) => {
+        console.error(err)
+        Sentry.captureException(err)
+      })
     } catch (err) {
       if (err instanceof SlotTakenError) {
         // No manual refetch needed — the live listener above already reflects
@@ -122,6 +126,7 @@ function BookingModal({ onClose }) {
         setStartMinutes('')
       } else {
         console.error('Error creating booking:', err)
+        Sentry.captureException(err)
         setErrorMessage('Something went wrong saving your booking. Please try again.')
       }
     } finally {

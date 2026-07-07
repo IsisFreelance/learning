@@ -1,3 +1,4 @@
+import Sentry from './lib/sentry.js'
 import { adminDb } from './lib/firebaseAdmin.js'
 import { generateConfirmToken } from './lib/tokens.js'
 import { sendBookingEmail } from './lib/sendEmail.js'
@@ -48,6 +49,7 @@ export default async function handler(req, res) {
       sent += 1
     } catch (err) {
       console.error(`Failed to send reminder for booking ${doc.id}:`, err)
+      Sentry.captureException(err)
     }
   }
 

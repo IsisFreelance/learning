@@ -1,3 +1,4 @@
+import './lib/sentry.js'
 import { adminDb } from './lib/firebaseAdmin.js'
 
 function htmlPage(title, message) {

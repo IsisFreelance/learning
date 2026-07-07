@@ -1,3 +1,4 @@
+import Sentry from './lib/sentry.js'
 import { sendBookingEmail } from './lib/sendEmail.js'
 import { adminDb } from './lib/firebaseAdmin.js'
 import { generateConfirmToken } from './lib/tokens.js'
@@ -27,6 +28,7 @@ export default async function handler(req, res) {
     })
   } catch (err) {
     console.error('Failed to create Google Calendar event:', err)
+    Sentry.captureException(err)
   }
 
   try {
@@ -50,6 +52,7 @@ export default async function handler(req, res) {
     }
   } catch (err) {
     console.error('Failed to send confirmation email:', err)
+    Sentry.captureException(err)
   }
 
   // Always respond success — a failed notification must never look like a failed booking.
