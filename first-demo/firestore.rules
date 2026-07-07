@@ -1,18 +1,61 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Matches the exact shape createBooking() writes in src/lib/bookings.js —
+    // anything with extra/missing fields or wrong types is rejected outright,
+    // so a script can't drop garbage or oversized spam into `bookings` even
+    // though creation has to stay open to anonymous visitors.
+    function isValidBooking(data) {
+      return data.keys().hasOnly([
+        'services', 'totalMinutes', 'date', 'startTime', 'endTime',
+        'name', 'email', 'phone', 'reference', 'status', 'createdAt'
+      ])
+        && data.services is list && data.services.size() > 0
+        && data.totalMinutes is number && data.totalMinutes > 0
+        && data.date is string && data.date.size() > 0
+        && data.startTime is string && data.startTime.size() > 0
+        && data.endTime is string && data.endTime.size() > 0
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 200
+        && data.email is string && data.email.size() > 0 && data.email.size() <= 200
+        && data.phone is string && data.phone.size() > 0 && data.phone.size() <= 50
+        && data.reference is string && data.reference.matches('BHD-.*')
+        && data.status == 'Pending'
+        && data.createdAt is timestamp;
+    }
+
+    function isValidBookingSlot(data) {
+      return data.keys().hasOnly(['date', 'time', 'bookingId'])
+        && data.date is string && data.date.size() > 0
+        && data.time is string && data.time.size() > 0
+        && data.bookingId is string && data.bookingId.size() > 0;
+    }
+
+    // `count` may only start at 1 and climb by exactly 1 per write, so no one
+    // can jump the sequence, rewind it, or write a non-numeric value —
+    // deleting the counter isn't allowed either, since that would silently
+    // reset every future booking's reference number back to BHD-000001.
+    function isValidCounterFields(data) {
+      return data.keys().hasOnly(['count']) && data.count is int && data.count > 0;
+    }
+
     match /bookings/{bookingId} {
-      allow create: if true;
+      allow create: if isValidBooking(request.resource.data);
       allow read, update: if request.auth != null;
       allow delete: if request.auth != null;
     }
     match /bookingSlots/{slotId} {
-      allow read, create: if true;
+      allow read: if true;
+      allow create: if isValidBookingSlot(request.resource.data);
       allow update: if false;
       allow delete: if request.auth != null;
     }
     match /counters/{counterId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if isValidCounterFields(request.resource.data)
+        && request.resource.data.count == 1;
+      allow update: if isValidCounterFields(request.resource.data)
+        && request.resource.data.count == resource.data.count + 1;
     }
   }
 }
