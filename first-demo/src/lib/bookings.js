@@ -137,11 +137,12 @@ export async function createBooking({ services, totalMinutes, date, startMinutes
 // patient confirming via email, a status change, etc). Returns an unsubscribe
 // function, meant to be called from a React effect's cleanup.
 export function listenToBookings(onChange) {
-  // Single orderBy avoids needing a composite Firestore index; sort by time client-side.
-  const q = query(collection(db, 'bookings'), orderBy('date', 'desc'))
+  // Ordered by the date+startTime composite index (see firestore.indexes.json) —
+  // groupBookingsByDate re-sorts for display anyway, but this keeps the raw
+  // data itself properly ordered rather than relying on a client-side sort.
+  const q = query(collection(db, 'bookings'), orderBy('date', 'asc'), orderBy('startTime', 'asc'))
   return onSnapshot(q, (snap) => {
     const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    bookings.sort((a, b) => (a.date === b.date ? b.startTime.localeCompare(a.startTime) : 0))
     onChange(bookings)
   })
 }
