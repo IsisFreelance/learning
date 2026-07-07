@@ -3,7 +3,7 @@ import { SERVICES } from '../data/services'
 import {
   computeAvailableStartTimes,
   createBooking,
-  fetchTakenSlotTimes,
+  listenToTakenSlotTimes,
   formatTime12h,
   getBusinessHours,
   minutesToHHMM,
@@ -42,22 +42,13 @@ function BookingModal({ onClose }) {
 
   useEffect(() => {
     if (!date) return
-    let cancelled = false
     setLoadingSlots(true)
     setStartMinutes('')
-    fetchTakenSlotTimes(date)
-      .then((times) => {
-        if (!cancelled) setTakenSlotTimes(times)
-      })
-      .catch(() => {
-        if (!cancelled) setErrorMessage('Could not load availability for that date. Please try again.')
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingSlots(false)
-      })
-    return () => {
-      cancelled = true
-    }
+    const unsubscribe = listenToTakenSlotTimes(date, (times) => {
+      setTakenSlotTimes(times)
+      setLoadingSlots(false)
+    })
+    return unsubscribe
   }, [date])
 
   function toggleService(serviceName) {
@@ -125,11 +116,10 @@ function BookingModal({ onClose }) {
       }).catch(console.error)
     } catch (err) {
       if (err instanceof SlotTakenError) {
+        // No manual refetch needed — the live listener above already reflects
+        // the slot that was just taken.
         setErrorMessage(err.message)
         setStartMinutes('')
-        fetchTakenSlotTimes(date)
-          .then(setTakenSlotTimes)
-          .catch(() => {})
       } else {
         console.error('Error creating booking:', err)
         setErrorMessage('Something went wrong saving your booking. Please try again.')

@@ -1,21 +1,48 @@
-import { useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import Hero from './components/Hero'
 import Services from './components/Services'
 import About from './components/About'
 import ContactFooter from './components/ContactFooter'
 import BookingModal from './components/BookingModal'
-import OwnerDashboard from './components/OwnerDashboard'
 import './App.css'
+
+// Lazy-loaded so public visitors never download the staff dashboard's code
+// (including Firebase Auth) — only fetched when someone actually visits /owner.
+const OwnerDashboard = lazy(() => import('./components/OwnerDashboard'))
+
+function OfflineBanner() {
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true)
+    const goOnline = () => setIsOffline(false)
+    window.addEventListener('offline', goOffline)
+    window.addEventListener('online', goOnline)
+    return () => {
+      window.removeEventListener('offline', goOffline)
+      window.removeEventListener('online', goOnline)
+    }
+  }, [])
+
+  if (!isOffline) return null
+  return <div className="offline-banner">You're offline — changes will sync once you're back online.</div>
+}
 
 function App() {
   const [isBookingOpen, setIsBookingOpen] = useState(false)
 
   if (window.location.pathname === '/owner') {
-    return <OwnerDashboard />
+    return (
+      <Suspense fallback={null}>
+        <OfflineBanner />
+        <OwnerDashboard />
+      </Suspense>
+    )
   }
 
   return (
     <>
+      <OfflineBanner />
       <Hero onBook={() => setIsBookingOpen(true)} />
       <Services />
       <About />

@@ -1,6 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getFirestore } from 'firebase/firestore'
-import { getAuth } from 'firebase/auth'
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -11,6 +10,15 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-const app = initializeApp(firebaseConfig)
-export const db = getFirestore(app)
-export const auth = getAuth(app)
+// Firebase Auth is deliberately NOT initialized here — it's only needed by
+// the staff dashboard, kept in firebaseAuthClient.js so public visitors
+// (who only need Firestore, for booking) never download that code.
+export const app = initializeApp(firebaseConfig)
+
+// Persistent local cache: recently-seen data stays available (read-only)
+// even if the connection drops, and queued writes sync automatically once
+// back online. Multiple-tab-aware since staff may have the dashboard open
+// in more than one tab.
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+})

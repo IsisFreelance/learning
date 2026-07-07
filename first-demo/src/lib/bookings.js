@@ -1,7 +1,6 @@
 import {
   collection,
   doc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -51,10 +50,14 @@ export function computeSlotKeys(dateStr, startMinutes, totalMinutes) {
   return keys
 }
 
-export async function fetchTakenSlotTimes(dateStr) {
+// Live availability for a given date — onChange fires immediately, then again
+// whenever a slot for that date is taken or freed (by anyone, anywhere), so
+// two people looking at the same day see it update without a page reload.
+export function listenToTakenSlotTimes(dateStr, onChange) {
   const q = query(collection(db, 'bookingSlots'), where('date', '==', dateStr))
-  const snap = await getDocs(q)
-  return snap.docs.map((d) => d.data().time)
+  return onSnapshot(q, (snap) => {
+    onChange(snap.docs.map((d) => d.data().time))
+  })
 }
 
 // Given already-taken slot times for the date, returns available start times (in minutes).

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth'
-import { auth } from '../firebaseClient'
+import { auth } from '../firebaseAuthClient'
 import {
   deleteBooking,
   formatTime12h,

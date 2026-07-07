@@ -245,6 +245,15 @@
   margin-bottom: 1.25rem;
 }
 
+.offline-banner {
+  background: #fff4e5;
+  color: #b3690a;
+  text-align: center;
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 .booking-form .btn-primary,
 .booking-confirmation .btn-primary {
   width: 100%;
