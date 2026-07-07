@@ -1,6 +1,8 @@
 import { sendBookingEmail } from './lib/sendEmail.js'
 import { adminDb } from './lib/firebaseAdmin.js'
 import { generateConfirmToken } from './lib/tokens.js'
+import { buildCalendarLink } from './lib/calendarLink.js'
+import { createCalendarEvent } from './lib/googleCalendar.js'
 
 function hoursUntilAppointment(date, startTime) {
   const appointmentStart = new Date(`${date}T${startTime}:00`)
@@ -14,6 +16,18 @@ export default async function handler(req, res) {
   }
 
   const booking = req.body
+  const calendarLink = buildCalendarLink(booking)
+
+  // Creating the practice's calendar event is independent from sending the
+  // email — one failing must never block the other.
+  try {
+    const eventId = await createCalendarEvent(booking)
+    await adminDb.collection('bookings').doc(booking.bookingId).update({
+      googleCalendarEventId: eventId,
+    })
+  } catch (err) {
+    console.error('Failed to create Google Calendar event:', err)
+  }
 
   try {
     const hoursAway = hoursUntilAppointment(booking.date, booking.startTime)
@@ -30,9 +44,9 @@ export default async function handler(req, res) {
       const proto = req.headers['x-forwarded-proto'] || 'https'
       const confirmLink = `${proto}://${req.headers.host}/api/confirm-appointment?bookingId=${booking.bookingId}&token=${token}`
 
-      await sendBookingEmail({ ...booking, confirmLink })
+      await sendBookingEmail({ ...booking, confirmLink, calendarLink })
     } else {
-      await sendBookingEmail(booking)
+      await sendBookingEmail({ ...booking, calendarLink })
     }
   } catch (err) {
     console.error('Failed to send confirmation email:', err)

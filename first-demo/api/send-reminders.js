@@ -1,6 +1,7 @@
 import { adminDb } from './lib/firebaseAdmin.js'
 import { generateConfirmToken } from './lib/tokens.js'
 import { sendBookingEmail } from './lib/sendEmail.js'
+import { buildCalendarLink } from './lib/calendarLink.js'
 
 function tomorrowDateStr() {
   const now = new Date()
@@ -41,6 +42,7 @@ export default async function handler(req, res) {
         startTime: booking.startTime,
         endTime: booking.endTime,
         confirmLink,
+        calendarLink: buildCalendarLink(booking),
         subject: `Reminder: Your appointment tomorrow (${booking.reference})`,
       })
       sent += 1
