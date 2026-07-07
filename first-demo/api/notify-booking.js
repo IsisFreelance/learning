@@ -1,9 +1,9 @@
-import Sentry from './lib/sentry.js'
-import { sendBookingEmail } from './lib/sendEmail.js'
-import { adminDb } from './lib/firebaseAdmin.js'
-import { generateConfirmToken } from './lib/tokens.js'
-import { buildCalendarLink } from './lib/calendarLink.js'
-import { createCalendarEvent } from './lib/googleCalendar.js'
+import Sentry from './_lib/sentry.js'
+import { sendBookingEmail } from './_lib/sendEmail.js'
+import { adminDb } from './_lib/firebaseAdmin.js'
+import { generateConfirmToken } from './_lib/tokens.js'
+import { buildCalendarLink } from './_lib/calendarLink.js'
+import { createCalendarEvent } from './_lib/googleCalendar.js'
 
 function hoursUntilAppointment(date, startTime) {
   const appointmentStart = new Date(`${date}T${startTime}:00`)

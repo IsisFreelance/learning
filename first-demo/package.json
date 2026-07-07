@@ -12,6 +12,7 @@
     "test:rules": "firebase emulators:exec --only firestore \"vitest run firestore.rules.test.js\""
   },
   "dependencies": {
+    "@hcaptcha/react-hcaptcha": "^2.0.2",
     "@sendgrid/mail": "^8.1.6",
     "@sentry/node": "^10.64.0",
     "@sentry/react": "^10.64.0",

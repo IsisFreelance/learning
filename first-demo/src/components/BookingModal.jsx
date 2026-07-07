@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as Sentry from '@sentry/react'
+import HCaptcha from '@hcaptcha/react-hcaptcha'
 import { SERVICES } from '../data/services'
 import {
   computeAvailableStartTimes,
@@ -31,6 +32,8 @@ function BookingModal({ onClose }) {
   const [errorMessage, setErrorMessage] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [confirmation, setConfirmation] = useState(null)
+  const [captchaToken, setCaptchaToken] = useState('')
+  const captchaRef = useRef(null)
 
   const totalMinutes = SERVICES.filter((s) => selectedServices.includes(s.name)).reduce(
     (sum, s) => sum + s.durationMinutes,
@@ -70,6 +73,7 @@ function BookingModal({ onClose }) {
     if (!email.trim()) errors.email = 'Enter your email.'
     else if (!EMAIL_PATTERN.test(email.trim())) errors.email = 'Enter a valid email address.'
     if (!phone.trim()) errors.phone = 'Enter your phone number.'
+    if (!captchaToken) errors.captcha = 'Please complete the captcha.'
     return errors
   }
 
@@ -82,6 +86,20 @@ function BookingModal({ onClose }) {
     setSubmitting(true)
     setErrorMessage('')
     try {
+      const verifyRes = await fetch('/api/verify-captcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: captchaToken }),
+      })
+      const verifyData = await verifyRes.json()
+      if (!verifyData.ok) {
+        setErrorMessage('Captcha verification failed. Please try again.')
+        captchaRef.current?.resetCaptcha()
+        setCaptchaToken('')
+        setSubmitting(false)
+        return
+      }
+
       const { reference, bookingId } = await createBooking({
         services: selectedServices,
         totalMinutes,
@@ -119,6 +137,10 @@ function BookingModal({ onClose }) {
         Sentry.captureException(err)
       })
     } catch (err) {
+      // hCaptcha tokens are single-use — whatever happens below, get a fresh one for the retry.
+      captchaRef.current?.resetCaptcha()
+      setCaptchaToken('')
+
       if (err instanceof SlotTakenError) {
         // No manual refetch needed — the live listener above already reflects
         // the slot that was just taken.
@@ -220,6 +242,16 @@ function BookingModal({ onClose }) {
               <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
               {fieldErrors.phone && <p className="field-error">{fieldErrors.phone}</p>}
             </label>
+
+            <div className="form-field">
+              <HCaptcha
+                ref={captchaRef}
+                sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY}
+                onVerify={setCaptchaToken}
+                onExpire={() => setCaptchaToken('')}
+              />
+              {fieldErrors.captcha && <p className="field-error">{fieldErrors.captcha}</p>}
+            </div>
 
             {errorMessage && <p className="form-error">{errorMessage}</p>}
 

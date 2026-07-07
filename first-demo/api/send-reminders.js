@@ -1,8 +1,8 @@
-import Sentry from './lib/sentry.js'
-import { adminDb } from './lib/firebaseAdmin.js'
-import { generateConfirmToken } from './lib/tokens.js'
-import { sendBookingEmail } from './lib/sendEmail.js'
-import { buildCalendarLink } from './lib/calendarLink.js'
+import Sentry from './_lib/sentry.js'
+import { adminDb } from './_lib/firebaseAdmin.js'
+import { generateConfirmToken } from './_lib/tokens.js'
+import { sendBookingEmail } from './_lib/sendEmail.js'
+import { buildCalendarLink } from './_lib/calendarLink.js'
 
 function tomorrowDateStr() {
   const now = new Date()

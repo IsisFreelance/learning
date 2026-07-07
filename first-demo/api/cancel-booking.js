@@ -1,7 +1,7 @@
-import Sentry from './lib/sentry.js'
-import { adminDb } from './lib/firebaseAdmin.js'
-import { deleteCalendarEvent } from './lib/googleCalendar.js'
-import { sendCancellationEmail } from './lib/sendEmail.js'
+import Sentry from './_lib/sentry.js'
+import { adminDb } from './_lib/firebaseAdmin.js'
+import { deleteCalendarEvent } from './_lib/googleCalendar.js'
+import { sendCancellationEmail } from './_lib/sendEmail.js'
 
 // Verifies a Firebase Auth ID token AND that it belongs to an account with
 // the "staff" custom claim (see scripts/set-staff-claim.js) — not just any
