@@ -4,6 +4,7 @@ import { adminDb } from './_lib/firebaseAdmin.js'
 import { generateConfirmToken } from './_lib/tokens.js'
 import { buildCalendarLink } from './_lib/calendarLink.js'
 import { createCalendarEvent } from './_lib/googleCalendar.js'
+import { checkRateLimit, getClientIp, RateLimitError } from './_lib/rateLimit.js'
 
 function hoursUntilAppointment(date, startTime) {
   const appointmentStart = new Date(`${date}T${startTime}:00`)
@@ -14,6 +15,18 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' })
     return
+  }
+
+  try {
+    await checkRateLimit(`notify:${getClientIp(req)}`, { maxRequests: 15, windowMinutes: 5 })
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      res.status(429).json({ error: err.message })
+      return
+    }
+    // Rate-limit infra failing must never block a real booking notification.
+    console.error('Rate limit check failed:', err)
+    Sentry.captureException(err)
   }
 
   const booking = req.body
