@@ -3,9 +3,11 @@ import { adminDb } from './lib/firebaseAdmin.js'
 import { deleteCalendarEvent } from './lib/googleCalendar.js'
 import { sendCancellationEmail } from './lib/sendEmail.js'
 
-// Verifies a Firebase Auth ID token via Google's public REST endpoint,
-// avoiding firebase-admin/auth (whose JWKS-verification dependency chain
-// isn't loadable in this Vercel runtime — see ERR_REQUIRE_ESM from jose).
+// Verifies a Firebase Auth ID token AND that it belongs to an account with
+// the "staff" custom claim (see scripts/set-staff-claim.js) — not just any
+// logged-in account. Uses Google's public REST endpoint, avoiding
+// firebase-admin/auth (whose JWKS-verification dependency chain isn't
+// loadable in this Vercel runtime — see ERR_REQUIRE_ESM from jose).
 async function verifyStaffToken(idToken) {
   const res = await fetch(
     `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${process.env.VITE_FIREBASE_API_KEY}`,
@@ -17,7 +19,10 @@ async function verifyStaffToken(idToken) {
   )
   if (!res.ok) return false
   const data = await res.json()
-  return Boolean(data.users?.[0])
+  const user = data.users?.[0]
+  if (!user) return false
+  const claims = JSON.parse(user.customAttributes || '{}')
+  return claims.staff === true
 }
 
 export default async function handler(req, res) {

@@ -47,9 +47,22 @@ function OwnerDashboard() {
   const [updatingId, setUpdatingId] = useState(null)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u)
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setAuthLoaded(true)
+      if (!u) {
+        setUser(null)
+        return
+      }
+      // Being logged in isn't enough — only accounts with the "staff"
+      // custom claim (see scripts/set-staff-claim.js) get the dashboard.
+      const tokenResult = await u.getIdTokenResult()
+      if (tokenResult.claims.staff !== true) {
+        setLoginError('This account is not authorized for staff access.')
+        setUser(null)
+        await signOut(auth)
+        return
+      }
+      setUser(u)
     })
     return unsubscribe
   }, [])
