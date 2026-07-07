@@ -1,7 +1,24 @@
 import { useEffect, useState } from 'react'
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import { auth } from '../firebaseClient'
-import { fetchAllBookings, formatTime12h, hhmmToMinutes, updateBookingStatus } from '../lib/bookings'
+import {
+  deleteBooking,
+  formatTime12h,
+  groupBookingsByDate,
+  hhmmToMinutes,
+  isBookingPast,
+  listenToBookings,
+  updateBookingStatus,
+} from '../lib/bookings'
+
+function formatDayHeading(dateStr) {
+  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
 
 function friendlyAuthError(code) {
   if (
@@ -44,10 +61,11 @@ function OwnerDashboard() {
       return
     }
     setLoadingBookings(true)
-    fetchAllBookings()
-      .then(setBookings)
-      .catch(() => setActionError('Could not load bookings. Please refresh and try again.'))
-      .finally(() => setLoadingBookings(false))
+    const unsubscribe = listenToBookings((fresh) => {
+      setBookings(fresh)
+      setLoadingBookings(false)
+    })
+    return unsubscribe
   }, [user])
 
   async function handleLogin(e) {
@@ -71,9 +89,47 @@ function OwnerDashboard() {
       setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, status } : b)))
     } catch {
       setActionError('Could not update that booking. Please try again.')
-    } finally {
       setUpdatingId(null)
+      return
     }
+
+    if (status === 'Cancelled') {
+      try {
+        const idToken = await auth.currentUser.getIdToken()
+        const res = await fetch('/api/cancel-booking', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ bookingId }),
+        })
+        const data = await res.json()
+        if (data.hadEvent && !data.calendarDeleted) {
+          setActionError('Booking cancelled, but the calendar event may need to be removed manually.')
+        } else if (!data.emailSent) {
+          setActionError('Booking cancelled, but the patient notification email may not have sent.')
+        }
+      } catch {
+        setActionError('Booking cancelled, but the calendar event/email notification may need to be handled manually.')
+      }
+    }
+
+    setUpdatingId(null)
+  }
+
+  async function handleDelete(booking) {
+    if (!window.confirm('Permanently delete this booking? This cannot be undone.')) return
+
+    setActionError('')
+    setUpdatingId(booking.id)
+    try {
+      await deleteBooking(booking)
+    } catch (err) {
+      console.error('Failed to delete booking:', err)
+      setActionError('Could not delete that booking. Please try again.')
+    }
+    setUpdatingId(null)
   }
 
   if (!authLoaded) return null
@@ -124,45 +180,57 @@ function OwnerDashboard() {
       ) : bookings.length === 0 ? (
         <p>No bookings yet.</p>
       ) : (
-        <div className="booking-list">
-          {bookings.map((b) => {
-            const status = b.status || 'Pending'
-            return (
-              <article key={b.id} className="booking-card">
-                <div className="booking-card-top">
-                  <span className="booking-reference">{b.reference}</span>
-                  <span className={`booking-status status-${status.toLowerCase()}`}>{status}</span>
-                </div>
-                <p className="booking-patient">{b.name}</p>
-                <p className="booking-contact">
-                  {b.email} &middot; {b.phone}
-                </p>
-                <p>{Array.isArray(b.services) ? b.services.join(', ') : b.services}</p>
-                <p>
-                  {b.date} &middot; {formatTime12h(hhmmToMinutes(b.startTime))} –{' '}
-                  {formatTime12h(hhmmToMinutes(b.endTime))}
-                </p>
-                <p className="patient-confirmation">
-                  {b.confirmedByPatient ? 'Patient confirmed ✓' : 'Awaiting patient confirmation'}
-                </p>
-                <div className="booking-actions">
-                  <button
-                    disabled={status === 'Confirmed' || updatingId === b.id}
-                    onClick={() => handleStatusChange(b.id, 'Confirmed')}
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    disabled={status === 'Cancelled' || updatingId === b.id}
-                    onClick={() => handleStatusChange(b.id, 'Cancelled')}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </article>
-            )
-          })}
-        </div>
+        groupBookingsByDate(bookings).map((group) => (
+          <section key={group.date} className="booking-day-group">
+            <h3 className="booking-day-heading">{formatDayHeading(group.date)}</h3>
+            <div className="booking-list">
+              {group.bookings.map((b) => {
+                const status = b.status || 'Pending'
+                const canDelete = status === 'Cancelled' || isBookingPast(b)
+                return (
+                  <article key={b.id} className="booking-row">
+                    <div className="booking-card-top">
+                      <span className="booking-reference">{b.reference}</span>
+                      <span className={`booking-status status-${status.toLowerCase()}`}>{status}</span>
+                    </div>
+                    <p className="booking-patient">{b.name}</p>
+                    <p className="booking-contact">
+                      {b.email} &middot; {b.phone}
+                    </p>
+                    <p>{Array.isArray(b.services) ? b.services.join(', ') : b.services}</p>
+                    <p>
+                      {formatTime12h(hhmmToMinutes(b.startTime))} –{' '}
+                      {formatTime12h(hhmmToMinutes(b.endTime))}
+                    </p>
+                    <div className="booking-actions">
+                      <button
+                        className="btn-confirm"
+                        disabled={status === 'Confirmed' || updatingId === b.id}
+                        onClick={() => handleStatusChange(b.id, 'Confirmed')}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        className="btn-cancel"
+                        disabled={status === 'Cancelled' || updatingId === b.id}
+                        onClick={() => handleStatusChange(b.id, 'Cancelled')}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="btn-delete"
+                        disabled={!canDelete || updatingId === b.id}
+                        onClick={() => handleDelete(b)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+        ))
       )}
     </main>
   )

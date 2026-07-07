@@ -364,18 +364,30 @@
   border-color: var(--teal);
 }
 
+.booking-day-group {
+  margin-bottom: 1.5rem;
+}
+
+.booking-day-heading {
+  color: var(--teal-dark);
+  font-size: 1rem;
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 1px solid #d7e6e4;
+}
+
 .booking-list {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
 }
 
-.booking-card {
-  background: #ffffff;
-  border: 1px solid #e6f4f2;
-  border-radius: var(--radius-md);
-  padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-soft);
+.booking-row {
+  padding: 0.85rem 0.25rem;
+  border-bottom: 1px solid #e6f4f2;
+}
+
+.booking-row:last-child {
+  border-bottom: none;
 }
 
 .booking-card-top {
@@ -424,16 +436,10 @@
   margin-bottom: 0.5rem;
 }
 
-.booking-card p {
+.booking-row p {
   margin-bottom: 0.35rem;
   color: var(--slate-soft);
   font-size: 0.95rem;
-}
-
-.patient-confirmation {
-  font-size: 0.85rem;
-  font-style: italic;
-  color: var(--slate-soft);
 }
 
 .booking-actions {
@@ -453,12 +459,13 @@
   cursor: pointer;
 }
 
-.booking-actions button:first-child:not(:disabled):hover {
+.booking-actions .btn-confirm:not(:disabled):hover {
   border-color: var(--teal);
   color: var(--teal-dark);
 }
 
-.booking-actions button:last-child:not(:disabled):hover {
+.booking-actions .btn-cancel:not(:disabled):hover,
+.booking-actions .btn-delete:not(:disabled):hover {
   border-color: var(--coral);
   color: var(--coral);
 }

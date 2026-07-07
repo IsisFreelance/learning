@@ -2,12 +2,14 @@ import {
   collection,
   doc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   runTransaction,
   serverTimestamp,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore'
 import { db } from '../firebaseClient'
 
@@ -41,7 +43,7 @@ export function getBusinessHours(dateStr) {
   return { open: 8 * 60, close: 18 * 60 } // Mon-Fri 8am-6pm
 }
 
-function computeSlotKeys(dateStr, startMinutes, totalMinutes) {
+export function computeSlotKeys(dateStr, startMinutes, totalMinutes) {
   const keys = []
   for (let m = startMinutes; m < startMinutes + totalMinutes; m += SLOT_INTERVAL_MINUTES) {
     keys.push(`${dateStr}_${minutesToHHMM(m)}`)
@@ -130,15 +132,54 @@ export async function createBooking({ services, totalMinutes, date, startMinutes
   })
 }
 
-export async function fetchAllBookings() {
+// Subscribes to live booking updates — onChange fires immediately with the
+// current data, then again every time anything changes in Firestore (a
+// patient confirming via email, a status change, etc). Returns an unsubscribe
+// function, meant to be called from a React effect's cleanup.
+export function listenToBookings(onChange) {
   // Single orderBy avoids needing a composite Firestore index; sort by time client-side.
   const q = query(collection(db, 'bookings'), orderBy('date', 'desc'))
-  const snap = await getDocs(q)
-  const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-  bookings.sort((a, b) => (a.date === b.date ? b.startTime.localeCompare(a.startTime) : 0))
-  return bookings
+  return onSnapshot(q, (snap) => {
+    const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    bookings.sort((a, b) => (a.date === b.date ? b.startTime.localeCompare(a.startTime) : 0))
+    onChange(bookings)
+  })
 }
 
 export async function updateBookingStatus(bookingId, status) {
   await updateDoc(doc(db, 'bookings', bookingId), { status })
+}
+
+// Permanently removes a booking and frees up its time slot(s).
+export async function deleteBooking(booking) {
+  const startMinutes = hhmmToMinutes(booking.startTime)
+  const slotKeys = computeSlotKeys(booking.date, startMinutes, booking.totalMinutes)
+
+  const batch = writeBatch(db)
+  for (const key of slotKeys) {
+    batch.delete(doc(db, 'bookingSlots', key))
+  }
+  batch.delete(doc(db, 'bookings', booking.id))
+  await batch.commit()
+}
+
+// True once the appointment's end time has already passed.
+export function isBookingPast(booking) {
+  return new Date(`${booking.date}T${booking.endTime}`) < new Date()
+}
+
+// Buckets bookings by date (oldest date first), each day's bookings sorted by start time.
+export function groupBookingsByDate(bookings) {
+  const byDate = new Map()
+  for (const booking of bookings) {
+    if (!byDate.has(booking.date)) byDate.set(booking.date, [])
+    byDate.get(booking.date).push(booking)
+  }
+
+  return Array.from(byDate.entries())
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .map(([date, dayBookings]) => ({
+      date,
+      bookings: [...dayBookings].sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    }))
 }
