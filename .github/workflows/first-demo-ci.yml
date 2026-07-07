@@ -1,0 +1,41 @@
+name: first-demo CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'first-demo/**'
+      - '.github/workflows/first-demo-ci.yml'
+  pull_request:
+    paths:
+      - 'first-demo/**'
+      - '.github/workflows/first-demo-ci.yml'
+
+defaults:
+  run:
+    working-directory: first-demo
+
+# Placeholder values only — just need a plausible-looking key present so the
+# Firebase SDK's synchronous format check doesn't throw. No real Firebase
+# project is contacted during lint/test/build.
+env:
+  VITE_FIREBASE_API_KEY: ci-placeholder-key
+  VITE_FIREBASE_AUTH_DOMAIN: ci-placeholder.firebaseapp.com
+  VITE_FIREBASE_PROJECT_ID: ci-placeholder
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: first-demo/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
