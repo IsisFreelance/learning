@@ -25,6 +25,24 @@ function formatDayHeading(dateStr) {
   })
 }
 
+// Bookings created before deposits existed have no depositStatus at all —
+// shown as nothing rather than a misleading "Unpaid".
+function depositLabel(booking) {
+  if (!booking.depositStatus) return null
+  const amount =
+    typeof booking.depositAmountCents === 'number' ? ` ($${(booking.depositAmountCents / 100).toFixed(2)})` : ''
+  switch (booking.depositStatus) {
+    case 'paid':
+      return `Deposit: Paid${amount}`
+    case 'refunded':
+      return `Deposit: Refunded${amount}`
+    case 'pending_payment':
+      return 'Deposit: Awaiting payment'
+    default:
+      return 'Deposit: Unpaid'
+  }
+}
+
 function friendlyAuthError(code) {
   if (
     code === 'auth/invalid-credential' ||
@@ -302,6 +320,7 @@ function OwnerDashboard() {
                       {formatTime12h(hhmmToMinutes(b.startTime))} –{' '}
                       {formatTime12h(hhmmToMinutes(b.endTime))}
                     </p>
+                    {depositLabel(b) && <p className="booking-contact">{depositLabel(b)}</p>}
                     {b.proposedDate && (
                       <p className="field-error">
                         Reschedule proposed: {b.proposedDate} &middot; {formatTime12h(hhmmToMinutes(b.proposedStartTime))} –{' '}

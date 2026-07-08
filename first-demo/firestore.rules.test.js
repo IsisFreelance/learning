@@ -18,6 +18,7 @@ const validBooking = {
   status: 'Pending',
   createdAt: serverTimestamp(),
   manageToken: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
+  depositStatus: 'unpaid',
 }
 
 const validBookingSlot = {
@@ -64,6 +65,12 @@ describe('bookings collection', () => {
     )
   })
 
+  it('blocks a booking missing depositStatus', async () => {
+    const db = testEnv.unauthenticatedContext().firestore()
+    const { depositStatus: _depositStatus, ...withoutDeposit } = validBooking
+    await assertFails(setDoc(doc(db, 'bookings', 'test5'), withoutDeposit))
+  })
+
   it('blocks anonymous users from reading bookings', async () => {
     const db = testEnv.unauthenticatedContext().firestore()
     await assertFails(getDoc(doc(db, 'bookings', 'test1')))
@@ -87,6 +94,19 @@ describe('bookings collection', () => {
   it('lets a staff user make a recognized update, like confirming a booking', async () => {
     const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
     await assertSucceeds(updateDoc(doc(db, 'bookings', 'test1'), { status: 'Confirmed' }))
+  })
+
+  it('lets a staff user update deposit fields', async () => {
+    const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
+    await assertSucceeds(
+      updateDoc(doc(db, 'bookings', 'test1'), {
+        depositStatus: 'paid',
+        depositAmountCents: 2500,
+        stripeCheckoutSessionId: 'cs_test_123',
+        stripePaymentIntentId: 'pi_test_123',
+        depositPaidAt: serverTimestamp(),
+      })
+    )
   })
 
   it('blocks a staff user from writing an unrecognized field on update', async () => {

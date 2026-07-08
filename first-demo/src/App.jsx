@@ -14,6 +14,10 @@ const OwnerDashboard = lazy(() => import('./components/OwnerDashboard'))
 // "manage my booking" link from their confirmation email.
 const ManageBooking = lazy(() => import('./components/ManageBooking'))
 
+// Lazy-loaded too — only fetched by someone actually redirected back from
+// a real Stripe checkout, not every visitor.
+const BookingConfirmed = lazy(() => import('./components/BookingConfirmed'))
+
 function OfflineBanner() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
 
@@ -49,6 +53,15 @@ function App() {
       <Suspense fallback={null}>
         <OfflineBanner />
         <ManageBooking />
+      </Suspense>
+    )
+  }
+
+  if (window.location.pathname === '/booking-confirmed') {
+    return (
+      <Suspense fallback={null}>
+        <OfflineBanner />
+        <BookingConfirmed />
       </Suspense>
     )
   }

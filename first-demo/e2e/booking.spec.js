@@ -10,10 +10,16 @@ function nextMonday() {
 }
 
 test('a visitor can book a real appointment end to end', async ({ page }) => {
-  // The booking flow's own two API calls are mocked here — everything else
+  // The booking flow's own API calls are mocked here — everything else
   // (Firestore via the emulator, the real UI, real validation) stays real.
+  // create-checkout-session is mocked to redirect straight to the app's own
+  // /booking-confirmed page instead of a real Stripe-hosted page — the real
+  // Stripe checkout + webhook leg isn't practically testable in this setup
+  // and is verified manually instead (see the deposit feature's plan notes).
   await page.route('**/api/verify-captcha', (route) => route.fulfill({ json: { ok: true } }))
-  await page.route('**/api/notify-booking', (route) => route.fulfill({ json: {} }))
+  await page.route('**/api/create-checkout-session', (route) =>
+    route.fulfill({ json: { ok: true, url: '/booking-confirmed?bookingId=test' } })
+  )
 
   await page.goto('/')
   await page.getByRole('button', { name: 'Book an appointment' }).click()
@@ -33,8 +39,8 @@ test('a visitor can book a real appointment end to end', async ({ page }) => {
   // BookingModal's onVerify before submitting, or captchaToken is still empty.
   await expect(hcaptchaFrame.getByRole('checkbox')).toHaveAttribute('aria-checked', 'true')
 
-  await page.getByRole('button', { name: 'Confirm booking' }).click()
+  await page.getByRole('button', { name: 'Reserve & continue to payment' }).click()
 
-  await expect(page.getByText("You're booked!")).toBeVisible()
-  await expect(page.getByText(/BHD-\d{6}/)).toBeVisible()
+  await expect(page).toHaveURL(/\/booking-confirmed/)
+  await expect(page.getByText('Payment received!')).toBeVisible()
 })

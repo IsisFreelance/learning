@@ -69,6 +69,15 @@ export function isBookingPast(booking) {
   return new Date(`${booking.date}T${booking.endTime}`) < new Date()
 }
 
+// How many hours from right now until the appointment starts — used both
+// for the "is this short-notice enough to send one combined confirm+reminder
+// email" check (api/notify-booking.js) and the "is this cancellation early
+// enough to refund the deposit" check (api/cancel-booking.js).
+export function hoursUntilAppointment(date, startTime) {
+  const appointmentStart = new Date(`${date}T${startTime}:00`)
+  return (appointmentStart.getTime() - Date.now()) / (1000 * 60 * 60)
+}
+
 // Given already-taken slot times for the date, returns available start times (in minutes).
 export function computeAvailableStartTimes(dateStr, totalMinutes, takenSlotTimes) {
   const hours = getBusinessHours(dateStr)

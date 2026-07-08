@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BookingModal from './BookingModal'
 
@@ -58,8 +58,13 @@ beforeEach(() => {
     if (url === '/api/verify-captcha') {
       return Promise.resolve({ json: () => Promise.resolve({ ok: true }) })
     }
-    return Promise.resolve({ json: () => Promise.resolve({}) })
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
   })
+  // jsdom doesn't implement real navigation — window.location.href is
+  // replaced with a plain writable stub so the redirect-to-Stripe step is
+  // observable without jsdom logging a "Not implemented: navigation" error.
+  delete window.location
+  window.location = { href: '' }
 })
 
 describe('BookingModal', () => {
@@ -76,7 +81,7 @@ describe('BookingModal', () => {
     const user = userEvent.setup()
     render(<BookingModal onClose={() => {}} />)
 
-    await user.click(screen.getByRole('button', { name: 'Confirm booking' }))
+    await user.click(screen.getByRole('button', { name: 'Reserve & continue to payment' }))
 
     expect(await screen.findByText('Choose at least one service.')).toBeInTheDocument()
     expect(screen.getByText('Choose a date.')).toBeInTheDocument()
@@ -87,16 +92,49 @@ describe('BookingModal', () => {
     expect(createBooking).not.toHaveBeenCalled()
   })
 
-  it('shows a confirmation with the reference number after a successful booking', async () => {
+  it('reserves the booking and redirects to Stripe checkout for the deposit', async () => {
     createBooking.mockResolvedValue({ reference: 'BHD-000042', bookingId: 'abc123' })
+    global.fetch = vi.fn((url) => {
+      if (url === '/api/verify-captcha') {
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true }) })
+      }
+      if (url === '/api/create-checkout-session') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ ok: true, url: 'https://checkout.stripe.com/test-session' }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
     const user = userEvent.setup()
     render(<BookingModal onClose={() => {}} />)
 
     await fillValidForm(user)
-    await user.click(screen.getByRole('button', { name: 'Confirm booking' }))
+    await user.click(screen.getByRole('button', { name: 'Reserve & continue to payment' }))
+
+    await waitFor(() => expect(window.location.href).toBe('https://checkout.stripe.com/test-session'))
+  })
+
+  it('lets the patient retry payment if starting checkout fails', async () => {
+    createBooking.mockResolvedValue({ reference: 'BHD-000042', bookingId: 'abc123' })
+    global.fetch = vi.fn((url) => {
+      if (url === '/api/verify-captcha') {
+        return Promise.resolve({ json: () => Promise.resolve({ ok: true }) })
+      }
+      if (url === '/api/create-checkout-session') {
+        return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'Stripe is down' }) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+    const user = userEvent.setup()
+    render(<BookingModal onClose={() => {}} />)
+
+    await fillValidForm(user)
+    await user.click(screen.getByRole('button', { name: 'Reserve & continue to payment' }))
 
     expect(await screen.findByText('BHD-000042')).toBeInTheDocument()
-    expect(screen.getByText("You're booked!")).toBeInTheDocument()
+    expect(screen.getByText('Something went wrong starting checkout. Please try again.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Try payment again' })).toBeInTheDocument()
   })
 
   it('shows a friendly message when the slot was just taken by someone else', async () => {
@@ -105,7 +143,7 @@ describe('BookingModal', () => {
     render(<BookingModal onClose={() => {}} />)
 
     await fillValidForm(user)
-    await user.click(screen.getByRole('button', { name: 'Confirm booking' }))
+    await user.click(screen.getByRole('button', { name: 'Reserve & continue to payment' }))
 
     expect(
       await screen.findByText('That time is no longer available. Please choose a different time.')

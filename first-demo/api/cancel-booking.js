@@ -1,9 +1,11 @@
 import Sentry from './_lib/sentry.js'
 import { adminDb } from './_lib/firebaseAdmin.js'
+import { stripe } from './_lib/stripeClient.js'
 import { deleteCalendarEvent } from './_lib/googleCalendar.js'
 import { sendCancellationEmail } from './_lib/sendEmail.js'
 import { checkRateLimit, getClientIp, RateLimitError } from './_lib/rateLimit.js'
 import { verifyStaffToken } from './_lib/staffAuth.js'
+import { hoursUntilAppointment } from '../src/lib/scheduling.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -58,6 +60,27 @@ export default async function handler(req, res) {
     }
   }
 
+  // null = no deposit was ever paid, nothing to refund or withhold.
+  let depositNote = null
+  if (booking.depositStatus === 'paid' && booking.stripePaymentIntentId) {
+    if (hoursUntilAppointment(booking.date, booking.startTime) >= 24) {
+      try {
+        await stripe.refunds.create({ payment_intent: booking.stripePaymentIntentId })
+        await bookingRef.update({ depositStatus: 'refunded' })
+        depositNote = 'refunded'
+      } catch (err) {
+        console.error('Failed to refund deposit:', err)
+        Sentry.captureException(err)
+        // Left as 'paid' so it's visible on the dashboard that a refund is
+        // still owed — staff can retry from Stripe's dashboard directly.
+      }
+    } else {
+      // Kept per the cancellation policy, not a failure — the booking's
+      // depositStatus stays 'paid' since nothing went wrong.
+      depositNote = 'kept'
+    }
+  }
+
   let emailSent = false
   try {
     await sendCancellationEmail({
@@ -68,6 +91,8 @@ export default async function handler(req, res) {
       date: booking.date,
       startTime: booking.startTime,
       endTime: booking.endTime,
+      depositNote,
+      depositAmountCents: booking.depositAmountCents,
     })
     emailSent = true
   } catch (err) {
@@ -75,5 +100,5 @@ export default async function handler(req, res) {
     Sentry.captureException(err)
   }
 
-  res.status(200).json({ ok: true, hadEvent, calendarDeleted, emailSent })
+  res.status(200).json({ ok: true, hadEvent, calendarDeleted, emailSent, depositNote })
 }

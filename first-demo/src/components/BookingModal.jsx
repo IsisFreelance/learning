@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as Sentry from '@sentry/react'
 import HCaptcha from '@hcaptcha/react-hcaptcha'
-import { SERVICES } from '../data/services'
+import { SERVICES, depositCentsForServices } from '../data/services'
 import {
   computeAvailableStartTimes,
   createBooking,
@@ -13,6 +13,10 @@ import {
 } from '../lib/bookings'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function formatDollars(cents) {
+  return (cents / 100).toFixed(2)
+}
 
 function BookingModal({ onClose }) {
   const [selectedServices, setSelectedServices] = useState([])
@@ -28,14 +32,21 @@ function BookingModal({ onClose }) {
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
-  const [confirmation, setConfirmation] = useState(null)
   const [captchaToken, setCaptchaToken] = useState('')
   const captchaRef = useRef(null)
+
+  // Set once the booking itself is reserved — the slot is claimed at this
+  // point no matter what happens with payment next, so this is kept
+  // separate from the checkout/redirect step that follows it.
+  const [reservedBooking, setReservedBooking] = useState(null)
+  const [checkoutError, setCheckoutError] = useState('')
+  const [startingCheckout, setStartingCheckout] = useState(false)
 
   const totalMinutes = SERVICES.filter((s) => selectedServices.includes(s.name)).reduce(
     (sum, s) => sum + s.durationMinutes,
     0
   )
+  const depositCents = depositCentsForServices(selectedServices)
 
   const businessHours = date ? getBusinessHours(date) : null
   const availableStartTimes =
@@ -82,6 +93,36 @@ function BookingModal({ onClose }) {
     return errors
   }
 
+  // The one place that calls create-checkout-session — used both right
+  // after a fresh booking is reserved and by the "try payment again"
+  // retry button, so a checkout-session failure never requires re-doing
+  // the booking itself (the slot is already claimed at that point).
+  async function startCheckout(bookingId) {
+    setStartingCheckout(true)
+    setCheckoutError('')
+    try {
+      const res = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.url) {
+        setCheckoutError('Something went wrong starting checkout. Please try again.')
+        setStartingCheckout(false)
+        return
+      }
+      // Full-page redirect to Stripe's hosted checkout — the app doesn't
+      // need to handle payment details itself.
+      window.location.href = data.url
+    } catch (err) {
+      console.error('Error starting checkout:', err)
+      Sentry.captureException(err)
+      setCheckoutError('Something went wrong starting checkout. Please try again.')
+      setStartingCheckout(false)
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     const errors = validate()
@@ -114,25 +155,10 @@ function BookingModal({ onClose }) {
         email: email.trim(),
         phone: phone.trim(),
       })
-      setConfirmation({
-        reference,
-        services: selectedServices,
-        date,
-        startMinutes: Number(startMinutes),
-        totalMinutes,
-        name: name.trim(),
-      })
-
-      // Best-effort notification — the booking already succeeded, so a failure here must not affect the UI.
-      // The server looks up the real booking by ID rather than trusting a body — see api/notify-booking.js.
-      fetch('/api/notify-booking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId }),
-      }).catch((err) => {
-        console.error(err)
-        Sentry.captureException(err)
-      })
+      setReservedBooking({ reference, bookingId, depositCents })
+      setSubmitting(false)
+      await startCheckout(bookingId)
+      return
     } catch (err) {
       // hCaptcha tokens are single-use — whatever happens below, get a fresh one for the retry.
       captchaRef.current?.resetCaptcha()
@@ -148,9 +174,8 @@ function BookingModal({ onClose }) {
         Sentry.captureException(err)
         setErrorMessage('Something went wrong saving your booking. Please try again.')
       }
-    } finally {
-      setSubmitting(false)
     }
+    setSubmitting(false)
   }
 
   return (
@@ -160,18 +185,22 @@ function BookingModal({ onClose }) {
           &times;
         </button>
 
-        {confirmation ? (
+        {reservedBooking ? (
           <div className="booking-confirmation">
-            <h2>You're booked!</h2>
-            <p className="confirmation-reference">{confirmation.reference}</p>
-            <p>{confirmation.services.join(', ')}</p>
+            <h2>Your time is reserved!</h2>
+            <p className="confirmation-reference">{reservedBooking.reference}</p>
             <p>
-              {confirmation.date} &middot; {formatTime12h(confirmation.startMinutes)} –{' '}
-              {formatTime12h(confirmation.startMinutes + confirmation.totalMinutes)}
+              A ${formatDollars(reservedBooking.depositCents)} deposit is required to confirm your appointment —
+              you'll be redirected to our secure payment page.
             </p>
-            <p>Thanks, {confirmation.name} — we look forward to seeing you.</p>
-            <button className="btn-primary" onClick={onClose}>
-              Done
+            {checkoutError && <p className="form-error">{checkoutError}</p>}
+            <button
+              className="btn-primary"
+              type="button"
+              onClick={() => startCheckout(reservedBooking.bookingId)}
+              disabled={startingCheckout}
+            >
+              {startingCheckout ? 'Redirecting…' : 'Try payment again'}
             </button>
           </div>
         ) : (
@@ -191,6 +220,9 @@ function BookingModal({ onClose }) {
                 </label>
               ))}
               {totalMinutes > 0 && <p className="total-time">Total appointment time: {totalMinutes} min</p>}
+              {depositCents > 0 && (
+                <p className="total-time">Deposit due today: ${formatDollars(depositCents)}</p>
+              )}
               {fieldErrors.services && <p className="field-error">{fieldErrors.services}</p>}
             </fieldset>
 
@@ -255,7 +287,7 @@ function BookingModal({ onClose }) {
             {errorMessage && <p className="form-error">{errorMessage}</p>}
 
             <button className="btn-primary" type="submit" disabled={submitting}>
-              {submitting ? 'Booking…' : 'Confirm booking'}
+              {submitting ? 'Reserving…' : 'Reserve & continue to payment'}
             </button>
           </form>
         )}

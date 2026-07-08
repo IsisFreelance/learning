@@ -18,7 +18,8 @@ service cloud.firestore {
     function isValidBooking(data) {
       return data.keys().hasOnly([
         'services', 'totalMinutes', 'date', 'startTime', 'endTime',
-        'name', 'email', 'phone', 'reference', 'status', 'createdAt', 'manageToken', 'notifiedAt'
+        'name', 'email', 'phone', 'reference', 'status', 'createdAt', 'manageToken', 'notifiedAt',
+        'depositStatus'
       ])
         && data.services is list && data.services.size() > 0
         && data.totalMinutes is number && data.totalMinutes > 0
@@ -38,7 +39,11 @@ service cloud.firestore {
         // Set by api/notify-booking.js the first time it successfully
         // emails a booking, so a replayed call can't re-send or
         // double-book a calendar event. Optional at creation time.
-        && (!('notifiedAt' in data) || data.notifiedAt is timestamp);
+        && (!('notifiedAt' in data) || data.notifiedAt is timestamp)
+        // Set by the client at creation time ('unpaid') — api/create-checkout-session.js,
+        // api/stripe-webhook.js and api/expire-unpaid-holds.js are the only
+        // things that ever move it on from there.
+        && data.depositStatus is string && data.depositStatus.size() > 0;
     }
 
     // Every field an update is allowed to touch, type-checked the same way
@@ -51,7 +56,8 @@ service cloud.firestore {
       return data.diff(resource.data).affectedKeys().hasOnly([
         'services', 'totalMinutes', 'date', 'startTime', 'endTime',
         'name', 'email', 'phone', 'reference', 'status', 'manageToken', 'notifiedAt',
-        'proposedDate', 'proposedStartTime', 'proposedEndTime', 'googleCalendarEventId', 'confirmedByPatient'
+        'proposedDate', 'proposedStartTime', 'proposedEndTime', 'googleCalendarEventId', 'confirmedByPatient',
+        'depositStatus', 'depositAmountCents', 'stripeCheckoutSessionId', 'stripePaymentIntentId', 'depositPaidAt'
       ])
         && (!('services' in data) || (data.services is list && data.services.size() > 0))
         && (!('totalMinutes' in data) || (data.totalMinutes is number && data.totalMinutes > 0))
@@ -69,7 +75,12 @@ service cloud.firestore {
         && (!('proposedStartTime' in data) || (data.proposedStartTime is string && data.proposedStartTime.size() > 0))
         && (!('proposedEndTime' in data) || (data.proposedEndTime is string && data.proposedEndTime.size() > 0))
         && (!('googleCalendarEventId' in data) || data.googleCalendarEventId == null || data.googleCalendarEventId is string)
-        && (!('confirmedByPatient' in data) || data.confirmedByPatient is bool);
+        && (!('confirmedByPatient' in data) || data.confirmedByPatient is bool)
+        && (!('depositStatus' in data) || (data.depositStatus is string && data.depositStatus.size() > 0))
+        && (!('depositAmountCents' in data) || (data.depositAmountCents is number && data.depositAmountCents > 0))
+        && (!('stripeCheckoutSessionId' in data) || (data.stripeCheckoutSessionId is string && data.stripeCheckoutSessionId.size() > 0))
+        && (!('stripePaymentIntentId' in data) || (data.stripePaymentIntentId is string && data.stripePaymentIntentId.size() > 0))
+        && (!('depositPaidAt' in data) || data.depositPaidAt is timestamp);
     }
 
     function isValidBookingSlot(data) {

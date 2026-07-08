@@ -127,6 +127,9 @@ export async function createBooking({ services, totalMinutes, date, startMinutes
       status: 'Pending',
       manageToken,
       createdAt: serverTimestamp(),
+      // Deposit collection happens as a separate step right after this
+      // (see api/create-checkout-session.js) — starts unpaid every time.
+      depositStatus: 'unpaid',
     })
     transaction.set(counterRef, { count: nextCount })
 
