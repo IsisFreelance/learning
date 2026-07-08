@@ -43,6 +43,7 @@ function OwnerDashboard() {
 
   const [bookings, setBookings] = useState([])
   const [loadingBookings, setLoadingBookings] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
   const [updatingId, setUpdatingId] = useState(null)
 
@@ -75,10 +76,17 @@ function OwnerDashboard() {
       return
     }
     setLoadingBookings(true)
-    const unsubscribe = listenToBookings((fresh) => {
-      setBookings(fresh)
-      setLoadingBookings(false)
-    })
+    setLoadError('')
+    const unsubscribe = listenToBookings(
+      (fresh) => {
+        setBookings(fresh)
+        setLoadingBookings(false)
+      },
+      () => {
+        setLoadError("Couldn't load bookings — please refresh the page.")
+        setLoadingBookings(false)
+      }
+    )
     return unsubscribe
   }, [user])
 
@@ -189,10 +197,11 @@ function OwnerDashboard() {
       </div>
 
       {actionError && <p className="form-error">{actionError}</p>}
+      {loadError && <p className="form-error">{loadError}</p>}
 
       {loadingBookings ? (
         <p>Loading bookings…</p>
-      ) : bookings.length === 0 ? (
+      ) : loadError ? null : bookings.length === 0 ? (
         <p>No bookings yet.</p>
       ) : (
         groupBookingsByDate(bookings).map((group) => (

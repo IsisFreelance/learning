@@ -26,6 +26,7 @@ function ManageBooking() {
   const [startMinutes, setStartMinutes] = useState('')
   const [takenSlotTimes, setTakenSlotTimes] = useState([])
   const [loadingSlots, setLoadingSlots] = useState(false)
+  const [slotsError, setSlotsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [result, setResult] = useState(null)
@@ -60,11 +61,19 @@ function ManageBooking() {
   useEffect(() => {
     if (!date) return
     setLoadingSlots(true)
+    setSlotsError('')
     setStartMinutes('')
-    const unsubscribe = listenToTakenSlotTimes(date, (times) => {
-      setTakenSlotTimes(times)
-      setLoadingSlots(false)
-    })
+    const unsubscribe = listenToTakenSlotTimes(
+      date,
+      (times) => {
+        setTakenSlotTimes(times)
+        setLoadingSlots(false)
+      },
+      () => {
+        setSlotsError("Couldn't check availability — please try again.")
+        setLoadingSlots(false)
+      }
+    )
     return unsubscribe
   }, [date])
 
@@ -148,6 +157,8 @@ function ManageBooking() {
             Start time
             {loadingSlots ? (
               <p>Checking availability…</p>
+            ) : slotsError ? (
+              <p className="field-error">{slotsError}</p>
             ) : (
               <select value={startMinutes} onChange={(e) => setStartMinutes(e.target.value)}>
                 <option value="">Choose a time</option>
@@ -158,7 +169,7 @@ function ManageBooking() {
                 ))}
               </select>
             )}
-            {!loadingSlots && availableStartTimes.length === 0 && (
+            {!loadingSlots && !slotsError && availableStartTimes.length === 0 && (
               <p className="field-error">No times available that day — try another date.</p>
             )}
           </label>

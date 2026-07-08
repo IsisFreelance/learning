@@ -10,8 +10,42 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore'
+import * as Sentry from '@sentry/react'
 import { db } from '../firebaseClient'
 import { computeSlotKeys, hhmmToMinutes, minutesToHHMM } from './scheduling'
+
+// Firestore treats a permission-denied error on a live listener as
+// terminal — it auto-retries ordinary network blips, but not this one.
+// A listener established the instant auth/App Check resolves can lose a
+// race against the token not being fully attached yet, failing once and
+// then staying dead forever with no further attempt. One retry after a
+// short delay covers exactly that startup race; a second failure is a
+// real problem, reported via onError instead of retried forever.
+function listenWithRetry(makeQuery, onSnap, onError) {
+  let unsubscribe = null
+  let cancelled = false
+  let retried = false
+
+  function subscribe() {
+    if (cancelled) return
+    unsubscribe = onSnapshot(makeQuery(), onSnap, (err) => {
+      console.error('Firestore listener error:', err)
+      Sentry.captureException(err)
+      if (!retried && err.code === 'permission-denied') {
+        retried = true
+        setTimeout(subscribe, 1500)
+        return
+      }
+      onError?.(err)
+    })
+  }
+
+  subscribe()
+  return () => {
+    cancelled = true
+    unsubscribe?.()
+  }
+}
 
 export {
   computeAvailableStartTimes,
@@ -37,11 +71,12 @@ function randomToken() {
 // Live availability for a given date — onChange fires immediately, then again
 // whenever a slot for that date is taken or freed (by anyone, anywhere), so
 // two people looking at the same day see it update without a page reload.
-export function listenToTakenSlotTimes(dateStr, onChange) {
-  const q = query(collection(db, 'bookingSlots'), where('date', '==', dateStr))
-  return onSnapshot(q, (snap) => {
-    onChange(snap.docs.map((d) => d.data().time))
-  })
+export function listenToTakenSlotTimes(dateStr, onChange, onError) {
+  return listenWithRetry(
+    () => query(collection(db, 'bookingSlots'), where('date', '==', dateStr)),
+    (snap) => onChange(snap.docs.map((d) => d.data().time)),
+    onError
+  )
 }
 
 // Thrown when the requested time is no longer available (lost a race to another booking).
@@ -103,15 +138,15 @@ export async function createBooking({ services, totalMinutes, date, startMinutes
 // current data, then again every time anything changes in Firestore (a
 // patient confirming via email, a status change, etc). Returns an unsubscribe
 // function, meant to be called from a React effect's cleanup.
-export function listenToBookings(onChange) {
-  // Ordered by the date+startTime composite index (see firestore.indexes.json) —
-  // groupBookingsByDate re-sorts for display anyway, but this keeps the raw
-  // data itself properly ordered rather than relying on a client-side sort.
-  const q = query(collection(db, 'bookings'), orderBy('date', 'asc'), orderBy('startTime', 'asc'))
-  return onSnapshot(q, (snap) => {
-    const bookings = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    onChange(bookings)
-  })
+export function listenToBookings(onChange, onError) {
+  return listenWithRetry(
+    // Ordered by the date+startTime composite index (see firestore.indexes.json) —
+    // groupBookingsByDate re-sorts for display anyway, but this keeps the raw
+    // data itself properly ordered rather than relying on a client-side sort.
+    () => query(collection(db, 'bookings'), orderBy('date', 'asc'), orderBy('startTime', 'asc')),
+    (snap) => onChange(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    onError
+  )
 }
 
 export async function updateBookingStatus(bookingId, status) {

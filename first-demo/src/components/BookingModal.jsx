@@ -24,6 +24,7 @@ function BookingModal({ onClose }) {
 
   const [takenSlotTimes, setTakenSlotTimes] = useState([])
   const [loadingSlots, setLoadingSlots] = useState(false)
+  const [slotsError, setSlotsError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
@@ -43,11 +44,19 @@ function BookingModal({ onClose }) {
   useEffect(() => {
     if (!date) return
     setLoadingSlots(true)
+    setSlotsError('')
     setStartMinutes('')
-    const unsubscribe = listenToTakenSlotTimes(date, (times) => {
-      setTakenSlotTimes(times)
-      setLoadingSlots(false)
-    })
+    const unsubscribe = listenToTakenSlotTimes(
+      date,
+      (times) => {
+        setTakenSlotTimes(times)
+        setLoadingSlots(false)
+      },
+      () => {
+        setSlotsError("Couldn't check availability — please try again.")
+        setLoadingSlots(false)
+      }
+    )
     return unsubscribe
   }, [date])
 
@@ -196,6 +205,8 @@ function BookingModal({ onClose }) {
                 Start time
                 {loadingSlots ? (
                   <p>Checking availability…</p>
+                ) : slotsError ? (
+                  <p className="field-error">{slotsError}</p>
                 ) : (
                   <select value={startMinutes} onChange={(e) => setStartMinutes(e.target.value)}>
                     <option value="">Choose a time</option>
@@ -206,7 +217,7 @@ function BookingModal({ onClose }) {
                     ))}
                   </select>
                 )}
-                {!loadingSlots && totalMinutes > 0 && availableStartTimes.length === 0 && (
+                {!loadingSlots && !slotsError && totalMinutes > 0 && availableStartTimes.length === 0 && (
                   <p className="field-error">No times available that day — try another date.</p>
                 )}
                 {fieldErrors.startTime && <p className="field-error">{fieldErrors.startTime}</p>}
