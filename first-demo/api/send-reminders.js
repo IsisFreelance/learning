@@ -1,6 +1,6 @@
 import Sentry from './_lib/sentry.js'
 import { adminDb } from './_lib/firebaseAdmin.js'
-import { generateConfirmToken } from './_lib/tokens.js'
+import { generateConfirmToken, tokensMatch } from './_lib/tokens.js'
 import { sendBookingEmail } from './_lib/sendEmail.js'
 import { buildCalendarLink } from './_lib/calendarLink.js'
 
@@ -11,8 +11,9 @@ function tomorrowDateStr() {
 }
 
 export default async function handler(req, res) {
-  const authHeader = req.headers.authorization
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authHeader = req.headers.authorization || ''
+  const providedSecret = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : null
+  if (!providedSecret || !tokensMatch(providedSecret, process.env.CRON_SECRET)) {
     res.status(401).json({ error: 'Unauthorized' })
     return
   }
@@ -20,8 +21,7 @@ export default async function handler(req, res) {
   const dateStr = tomorrowDateStr()
   const snap = await adminDb.collection('bookings').where('date', '==', dateStr).get()
 
-  const proto = req.headers['x-forwarded-proto'] || 'https'
-  const baseUrl = `${proto}://${req.headers.host}`
+  const baseUrl = process.env.PUBLIC_BASE_URL
 
   let sent = 0
   for (const doc of snap.docs) {

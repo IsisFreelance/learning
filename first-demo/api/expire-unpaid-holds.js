@@ -1,6 +1,7 @@
 import Sentry from './_lib/sentry.js'
 import { adminDb } from './_lib/firebaseAdmin.js'
 import { stripe } from './_lib/stripeClient.js'
+import { tokensMatch } from './_lib/tokens.js'
 import { computeSlotKeys, hhmmToMinutes } from '../src/lib/scheduling.js'
 
 const HOLD_TIMEOUT_MS = 2 * 60 * 60 * 1000 // 2 hours — comfortably longer than
@@ -8,8 +9,9 @@ const HOLD_TIMEOUT_MS = 2 * 60 * 60 * 1000 // 2 hours — comfortably longer tha
 // so a session can never still be payable by the time this considers it abandoned.
 
 export default async function handler(req, res) {
-  const authHeader = req.headers.authorization
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authHeader = req.headers.authorization || ''
+  const providedSecret = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : null
+  if (!providedSecret || !tokensMatch(providedSecret, process.env.CRON_SECRET)) {
     res.status(401).json({ error: 'Unauthorized' })
     return
   }

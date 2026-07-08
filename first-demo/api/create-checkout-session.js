@@ -3,6 +3,7 @@ import { adminDb } from './_lib/firebaseAdmin.js'
 import { stripe } from './_lib/stripeClient.js'
 import { checkRateLimit, getClientIp, RateLimitError } from './_lib/rateLimit.js'
 import { depositCentsForServices } from '../src/data/services.js'
+import { isBookingPast } from '../src/lib/scheduling.js'
 
 const CHECKOUT_EXPIRY_SECONDS = 60 * 60 // 1 hour — short enough that the daily
 // cleanup cron (api/expire-unpaid-holds.js) can never run into a still-valid
@@ -44,6 +45,15 @@ export default async function handler(req, res) {
 
   if (booking.depositStatus === 'paid') {
     res.status(200).json({ ok: true, alreadyPaid: true })
+    return
+  }
+
+  // Defense in depth — the webhook is the authoritative gate on this (a
+  // checkout link can stay payable for up to an hour, so this check alone
+  // wouldn't be enough), but there's no reason to hand out a dead-end
+  // payment link for a booking that's already cancelled or over.
+  if (booking.status === 'Cancelled' || isBookingPast(booking)) {
+    res.status(410).json({ error: 'This booking is no longer available for payment.' })
     return
   }
 

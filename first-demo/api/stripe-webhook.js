@@ -3,6 +3,7 @@ import Sentry from './_lib/sentry.js'
 import { adminDb } from './_lib/firebaseAdmin.js'
 import { stripe } from './_lib/stripeClient.js'
 import { finalizeBooking } from './_lib/finalizeBooking.js'
+import { isBookingPast } from '../src/lib/scheduling.js'
 
 // Stripe signs the raw request body — Vercel's default JSON body parser
 // would already have re-serialized it by the time this handler runs,
@@ -37,6 +38,7 @@ export default async function handler(req, res) {
     event = stripe.webhooks.constructEvent(rawBody, signature, process.env.STRIPE_WEBHOOK_SECRET)
   } catch (err) {
     console.error('Stripe webhook signature verification failed:', err)
+    Sentry.captureException(err)
     res.status(400).json({ error: 'Invalid signature' })
     return
   }
@@ -55,30 +57,40 @@ export default async function handler(req, res) {
   }
 
   const bookingRef = adminDb.collection('bookings').doc(bookingId)
-  const snap = await bookingRef.get()
-  if (!snap.exists) {
-    res.status(200).json({ ok: true })
-    return
-  }
-  const booking = snap.data()
-
-  // Stripe can and does deliver the same event more than once — this is
-  // what makes a duplicate delivery a no-op instead of a second email and
-  // calendar event.
-  if (booking.depositStatus === 'paid') {
-    res.status(200).json({ ok: true })
-    return
-  }
 
   try {
-    await bookingRef.update({
-      depositStatus: 'paid',
-      stripePaymentIntentId: session.payment_intent,
-      depositPaidAt: FieldValue.serverTimestamp(),
+    // The "is this safe to finalize" check and the write that marks it
+    // finalized happen atomically in one transaction — without that, two
+    // near-simultaneous deliveries of the same event (Stripe's own docs
+    // say duplicates happen) could both read "not paid yet" before either
+    // writes, and both would go on to email the patient and create a
+    // calendar event. This also doubles as the one place that decides a
+    // stale checkout link (payable for up to an hour) can't resurrect a
+    // booking that's since been cancelled or has already passed.
+    let shouldFinalize = false
+    await adminDb.runTransaction(async (transaction) => {
+      const snap = await transaction.get(bookingRef)
+      if (!snap.exists) return
+      const booking = snap.data()
+
+      if (booking.depositStatus === 'paid') return
+      if (booking.status === 'Cancelled' || isBookingPast(booking)) return
+
+      transaction.update(bookingRef, {
+        depositStatus: 'paid',
+        stripePaymentIntentId: session.payment_intent,
+        depositPaidAt: FieldValue.serverTimestamp(),
+      })
+      shouldFinalize = true
     })
 
-    const updatedSnap = await bookingRef.get()
-    await finalizeBooking(bookingRef, updatedSnap.data(), bookingId)
+    if (shouldFinalize) {
+      // finalizeBooking() makes real external API calls (SendGrid, Google
+      // Calendar) that must never run twice from a transaction retry, so
+      // it stays outside the transaction, using a fresh read of the now-paid booking.
+      const updatedSnap = await bookingRef.get()
+      await finalizeBooking(bookingRef, updatedSnap.data(), bookingId)
+    }
 
     res.status(200).json({ ok: true })
   } catch (err) {
