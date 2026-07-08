@@ -5,6 +5,18 @@
 
 export const SLOT_INTERVAL_MINUTES = 15
 
+// Formats a Date using its LOCAL calendar components — deliberately not
+// toISOString(), which always renders in UTC. Mixing local arithmetic
+// (setDate/getDate) with UTC formatting produces a date that's off by one
+// depending on timezone and time of day; keeping both steps in the same
+// (local) frame of reference avoids that.
+function formatLocalDate(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 // Bookings and reschedules both require at least a day's notice — the
 // simplest way to guarantee a picked time can never already be in the
 // past, without needing separate "is this exact moment already over"
@@ -13,7 +25,7 @@ export const SLOT_INTERVAL_MINUTES = 15
 export function minBookableDateStr() {
   const d = new Date()
   d.setDate(d.getDate() + 1)
-  return d.toISOString().slice(0, 10)
+  return formatLocalDate(d)
 }
 
 export function minutesToHHMM(mins) {
