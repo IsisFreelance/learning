@@ -1,9 +1,21 @@
-import './_lib/sentry.js'
+import Sentry from './_lib/sentry.js'
+import { checkRateLimit, getClientIp, RateLimitError } from './_lib/rateLimit.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' })
     return
+  }
+
+  try {
+    await checkRateLimit(`verify-captcha:${getClientIp(req)}`, { maxRequests: 15, windowMinutes: 5 })
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      res.status(429).json({ error: err.message })
+      return
+    }
+    console.error('Rate limit check failed:', err)
+    Sentry.captureException(err)
   }
 
   const { token } = req.body

@@ -8,7 +8,6 @@ import {
   listenToTakenSlotTimes,
   formatTime12h,
   getBusinessHours,
-  minutesToHHMM,
   SlotTakenError,
 } from '../lib/bookings'
 
@@ -119,19 +118,11 @@ function BookingModal({ onClose }) {
       })
 
       // Best-effort notification — the booking already succeeded, so a failure here must not affect the UI.
+      // The server looks up the real booking by ID rather than trusting a body — see api/notify-booking.js.
       fetch('/api/notify-booking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bookingId,
-          to: email.trim(),
-          name: name.trim(),
-          reference,
-          services: selectedServices,
-          date,
-          startTime: minutesToHHMM(Number(startMinutes)),
-          endTime: minutesToHHMM(Number(startMinutes) + totalMinutes),
-        }),
+        body: JSON.stringify({ bookingId }),
       }).catch((err) => {
         console.error(err)
         Sentry.captureException(err)

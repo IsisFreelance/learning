@@ -29,16 +29,32 @@ export default async function handler(req, res) {
     Sentry.captureException(err)
   }
 
-  const booking = req.body
+  // Only the booking's own ID is trusted from the client — every other
+  // field (recipient, name, reference, services, times) is read straight
+  // from Firestore's real record. Trusting the request body directly here
+  // would let anyone POST arbitrary content to be emailed to any address
+  // "from" this practice's real sender, or overwrite a real booking's
+  // calendar/confirm fields.
+  const { bookingId } = req.body
+  if (typeof bookingId !== 'string' || !bookingId) {
+    res.status(400).json({ error: 'Missing bookingId' })
+    return
+  }
+
+  const bookingRef = adminDb.collection('bookings').doc(bookingId)
+  const snap = await bookingRef.get()
+  if (!snap.exists) {
+    res.status(404).json({ error: 'Booking not found' })
+    return
+  }
+  const booking = snap.data()
   const calendarLink = buildCalendarLink(booking)
 
   // Creating the practice's calendar event is independent from sending the
   // email — one failing must never block the other.
   try {
     const eventId = await createCalendarEvent(booking)
-    await adminDb.collection('bookings').doc(booking.bookingId).update({
-      googleCalendarEventId: eventId,
-    })
+    await bookingRef.update({ googleCalendarEventId: eventId })
   } catch (err) {
     console.error('Failed to create Google Calendar event:', err)
     Sentry.captureException(err)
@@ -51,17 +67,14 @@ export default async function handler(req, res) {
       // Short-notice booking — send one combined email now, and mark it so the
       // daily reminder job doesn't send a second one for this booking later.
       const token = generateConfirmToken()
-      await adminDb.collection('bookings').doc(booking.bookingId).update({
-        confirmToken: token,
-        reminderSent: true,
-      })
+      await bookingRef.update({ confirmToken: token, reminderSent: true })
 
       const proto = req.headers['x-forwarded-proto'] || 'https'
-      const confirmLink = `${proto}://${req.headers.host}/api/confirm-appointment?bookingId=${booking.bookingId}&token=${token}`
+      const confirmLink = `${proto}://${req.headers.host}/api/confirm-appointment?bookingId=${bookingId}&token=${token}`
 
-      await sendBookingEmail({ ...booking, confirmLink, calendarLink })
+      await sendBookingEmail({ ...booking, to: booking.email, confirmLink, calendarLink })
     } else {
-      await sendBookingEmail({ ...booking, calendarLink })
+      await sendBookingEmail({ ...booking, to: booking.email, calendarLink })
     }
   } catch (err) {
     console.error('Failed to send confirmation email:', err)

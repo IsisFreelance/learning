@@ -1,5 +1,6 @@
-import './_lib/sentry.js'
+import Sentry from './_lib/sentry.js'
 import { adminDb } from './_lib/firebaseAdmin.js'
+import { checkRateLimit, getClientIp, RateLimitError } from './_lib/rateLimit.js'
 
 function htmlPage(title, message) {
   return `<!DOCTYPE html>
@@ -23,6 +24,17 @@ export default async function handler(req, res) {
   const { bookingId, token } = req.query
 
   res.setHeader('Content-Type', 'text/html')
+
+  try {
+    await checkRateLimit(`confirm-appointment:${getClientIp(req)}`, { maxRequests: 15, windowMinutes: 5 })
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      res.status(429).send(htmlPage('Too many attempts', err.message))
+      return
+    }
+    console.error('Rate limit check failed:', err)
+    Sentry.captureException(err)
+  }
 
   if (!bookingId || !token) {
     res.status(400).send(htmlPage('Invalid link', 'This confirmation link is missing information.'))
