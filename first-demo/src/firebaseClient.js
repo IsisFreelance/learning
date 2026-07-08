@@ -1,6 +1,13 @@
 import { initializeApp } from 'firebase/app'
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check'
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore'
+import {
+  connectFirestoreEmulator,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore'
+
+const useEmulator = import.meta.env.VITE_USE_FIRESTORE_EMULATOR === 'true'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -26,7 +33,9 @@ export const app = initializeApp(firebaseConfig)
 // script tag and needs `document`, so this would crash under Vitest (no DOM)
 // even with every env var set — `typeof document !== 'undefined'` is always
 // true in an actual browser and never true in Node/test environments.
-if (typeof document !== 'undefined') {
+// Also skipped entirely against the emulator — App Check protects the real
+// Firestore project, and there's nothing to protect in a throwaway local one.
+if (typeof document !== 'undefined' && !useEmulator) {
   if (import.meta.env.DEV) {
     // Lets `npm run dev` work without a real reCAPTCHA challenge. Never set in production.
     globalThis.FIREBASE_APPCHECK_DEBUG_TOKEN = true
@@ -44,3 +53,10 @@ if (typeof document !== 'undefined') {
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 })
+
+// e2e tests (see playwright.config.js) point this at the same Firestore
+// Emulator the rules tests already use, so they never touch real
+// production data — never set VITE_USE_FIRESTORE_EMULATOR in production.
+if (useEmulator) {
+  connectFirestoreEmulator(db, 'localhost', 8080)
+}
