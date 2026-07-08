@@ -9,6 +9,7 @@ import {
   getBusinessHours,
   hhmmToMinutes,
   isBookingPast,
+  minBookableDateStr,
   minutesToHHMM,
   SLOT_INTERVAL_MINUTES,
 } from '../src/lib/scheduling.js'
@@ -78,9 +79,13 @@ export default async function handler(req, res) {
     return
   }
 
-  const todayStr = new Date().toISOString().slice(0, 10)
   const hours = getBusinessHours(newDate)
-  if (newDate < todayStr || !hours || newStartMinutes < hours.open || newStartMinutes + booking.totalMinutes > hours.close) {
+  if (
+    newDate < minBookableDateStr() ||
+    !hours ||
+    newStartMinutes < hours.open ||
+    newStartMinutes + booking.totalMinutes > hours.close
+  ) {
     res.status(400).json({ error: "That time isn't available. Please choose a different time." })
     return
   }

@@ -5,6 +5,17 @@
 
 export const SLOT_INTERVAL_MINUTES = 15
 
+// Bookings and reschedules both require at least a day's notice — the
+// simplest way to guarantee a picked time can never already be in the
+// past, without needing separate "is this exact moment already over"
+// logic anywhere (today's date alone was never enough: business hours and
+// taken-slot checks don't know what time it is right now).
+export function minBookableDateStr() {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 export function minutesToHHMM(mins) {
   const h = Math.floor(mins / 60).toString().padStart(2, '0')
   const m = (mins % 60).toString().padStart(2, '0')

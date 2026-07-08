@@ -8,14 +8,11 @@ import {
   listenToTakenSlotTimes,
   formatTime12h,
   getBusinessHours,
+  minBookableDateStr,
   SlotTakenError,
 } from '../lib/bookings'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-function todayStr() {
-  return new Date().toISOString().slice(0, 10)
-}
 
 function BookingModal({ onClose }) {
   const [selectedServices, setSelectedServices] = useState([])
@@ -66,7 +63,7 @@ function BookingModal({ onClose }) {
     if (selectedServices.length === 0) errors.services = 'Choose at least one service.'
     if (!date) errors.date = 'Choose a date.'
     else if (!businessHours) errors.date = "We're closed Sundays — please pick another date."
-    else if (date < todayStr()) errors.date = 'Please choose a date in the future.'
+    else if (date < minBookableDateStr()) errors.date = 'Please choose a date starting tomorrow.'
     if (date && businessHours && startMinutes === '') errors.startTime = 'Choose a start time.'
     if (!name.trim()) errors.name = 'Enter your name.'
     if (!email.trim()) errors.email = 'Enter your email.'
@@ -190,7 +187,7 @@ function BookingModal({ onClose }) {
 
             <label className="form-field">
               Date
-              <input type="date" min={todayStr()} value={date} onChange={(e) => setDate(e.target.value)} />
+              <input type="date" min={minBookableDateStr()} value={date} onChange={(e) => setDate(e.target.value)} />
               {fieldErrors.date && <p className="field-error">{fieldErrors.date}</p>}
             </label>
 

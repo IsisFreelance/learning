@@ -6,11 +6,8 @@ import {
   getBusinessHours,
   hhmmToMinutes,
   listenToTakenSlotTimes,
+  minBookableDateStr,
 } from '../lib/bookings'
-
-function todayStr() {
-  return new Date().toISOString().slice(0, 10)
-}
 
 function getLinkParams() {
   const params = new URLSearchParams(window.location.search)
@@ -143,7 +140,7 @@ function ManageBooking() {
 
         <label className="form-field">
           Date
-          <input type="date" min={todayStr()} value={date} onChange={(e) => setDate(e.target.value)} />
+          <input type="date" min={minBookableDateStr()} value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
 
         {date && businessHours && (
