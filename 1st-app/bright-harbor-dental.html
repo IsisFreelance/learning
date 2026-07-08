@@ -20,36 +20,37 @@
 
   <main>
     <section class="section">
-      <h2>About this project</h2>
-      <p>
-        Bright Harbor Dental is a website built for a made-up dental practice, designed to
-        show a full booking experience end to end. Visitors can browse services, book an
-        appointment across one or more services, and receive a confirmation with a unique
-        booking reference — with built-in protection against two people booking the same
-        time slot.
-      </p>
-      <p>
-        Behind the scenes, the practice owner has a private, login-protected dashboard to
-        review every booking and mark it Confirmed or Cancelled — access enforced at the
-        database level, not just hidden in the interface.
-      </p>
-      <ul class="tags">
-        <li>React</li>
-        <li>Firebase (Firestore + Auth)</li>
-        <li>Vercel</li>
-      </ul>
-    </section>
-
-    <section class="section">
       <h2>Video walkthrough</h2>
       <!-- Replace this placeholder with the Loom embed code, e.g.:
            <iframe src="https://www.loom.com/embed/YOUR_VIDEO_ID" frameborder="0"
              allowfullscreen style="width:100%; aspect-ratio:16/9; border-radius:12px;"></iframe> -->
       <div class="video-placeholder">Video walkthrough coming soon</div>
+      <p style="text-align: center; margin-bottom: 0;">
+        <a class="btn btn-primary" href="https://learning-ten-alpha.vercel.app/" target="_blank" rel="noopener">View live site →</a>
+      </p>
     </section>
 
-    <section class="section" style="text-align: center;">
-      <a class="btn btn-primary" href="https://learning-ten-alpha.vercel.app/" target="_blank" rel="noopener">View live site →</a>
+    <section class="section">
+      <h2>About this project</h2>
+      <p>
+        Bright Harbor Dental is a full-stack booking platform for a fictional dental
+        practice, covering the full lifecycle of a real appointment system — not just a
+        booking form.
+      </p>
+      <ul class="goals-list">
+        <li>Real-time scheduling with built-in double-booking prevention, plus deposit payments via Stripe Checkout verified server-side through a signed webhook</li>
+        <li>Patient self-service rescheduling via a secure email link, staff-proposed time changes, and automatic refunds on early cancellation</li>
+        <li>A role-gated staff dashboard, with every permission enforced at the database level via Firestore Security Rules — not just hidden in the UI</li>
+        <li>Google Calendar sync and real email notifications at every step (booking, rescheduling, cancellation)</li>
+        <li>Production-grade security: rate limiting, CSP headers, CAPTCHA/App Check bot protection, and Sentry error monitoring</li>
+        <li>A full automated test suite (component, database-rules, and end-to-end tests) running in CI on every change</li>
+      </ul>
+      <ul class="tags">
+        <li>React</li>
+        <li>Firebase (Firestore + Auth)</li>
+        <li>Stripe</li>
+        <li>Vercel</li>
+      </ul>
     </section>
   </main>
 
