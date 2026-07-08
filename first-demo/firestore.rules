@@ -6,10 +6,19 @@ service cloud.firestore {
     // anything with extra/missing fields or wrong types is rejected outright,
     // so a script can't drop garbage or oversized spam into `bookings` even
     // though creation has to stay open to anonymous visitors.
+    // "Signed in" is not the same as "staff" — a Firebase project can end
+    // up with non-staff accounts (e.g. if self-serve sign-up is ever left
+    // on), so anything staff-only must check the custom claim
+    // (see scripts/set-staff-claim.js, api/_lib/staffAuth.js), not just
+    // request.auth != null.
+    function isStaff() {
+      return request.auth != null && request.auth.token.staff == true;
+    }
+
     function isValidBooking(data) {
       return data.keys().hasOnly([
         'services', 'totalMinutes', 'date', 'startTime', 'endTime',
-        'name', 'email', 'phone', 'reference', 'status', 'createdAt', 'manageToken'
+        'name', 'email', 'phone', 'reference', 'status', 'createdAt', 'manageToken', 'notifiedAt'
       ])
         && data.services is list && data.services.size() > 0
         && data.totalMinutes is number && data.totalMinutes > 0
@@ -25,7 +34,42 @@ service cloud.firestore {
         // The "manage my booking" link's secret (see ManageBooking.jsx /
         // api/manage-booking.js) — always generated at creation time, never
         // readable by the public since `bookings` only allows read to staff.
-        && data.manageToken is string && data.manageToken.size() > 0 && data.manageToken.size() <= 100;
+        && data.manageToken is string && data.manageToken.size() > 0 && data.manageToken.size() <= 100
+        // Set by api/notify-booking.js the first time it successfully
+        // emails a booking, so a replayed call can't re-send or
+        // double-book a calendar event. Optional at creation time.
+        && (!('notifiedAt' in data) || data.notifiedAt is timestamp);
+    }
+
+    // Every field an update is allowed to touch, type-checked the same way
+    // isValidBooking() checks creation — but each field is optional here
+    // (an update only sends the fields it's changing), and there's no
+    // "must equal exactly this" constraint like status == 'Pending', since
+    // legitimate updates (confirm, cancel, reschedule, propose) all change
+    // status or date/time on purpose.
+    function isValidBookingUpdate(data) {
+      return data.diff(resource.data).affectedKeys().hasOnly([
+        'services', 'totalMinutes', 'date', 'startTime', 'endTime',
+        'name', 'email', 'phone', 'reference', 'status', 'manageToken', 'notifiedAt',
+        'proposedDate', 'proposedStartTime', 'proposedEndTime', 'googleCalendarEventId', 'confirmedByPatient'
+      ])
+        && (!('services' in data) || (data.services is list && data.services.size() > 0))
+        && (!('totalMinutes' in data) || (data.totalMinutes is number && data.totalMinutes > 0))
+        && (!('date' in data) || (data.date is string && data.date.size() > 0))
+        && (!('startTime' in data) || (data.startTime is string && data.startTime.size() > 0))
+        && (!('endTime' in data) || (data.endTime is string && data.endTime.size() > 0))
+        && (!('name' in data) || (data.name is string && data.name.size() > 0 && data.name.size() <= 200))
+        && (!('email' in data) || (data.email is string && data.email.size() > 0 && data.email.size() <= 200))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() > 0 && data.phone.size() <= 50))
+        && (!('reference' in data) || (data.reference is string && data.reference.matches('BHD-.*')))
+        && (!('status' in data) || (data.status is string && data.status.size() > 0))
+        && (!('manageToken' in data) || (data.manageToken is string && data.manageToken.size() > 0 && data.manageToken.size() <= 100))
+        && (!('notifiedAt' in data) || data.notifiedAt is timestamp)
+        && (!('proposedDate' in data) || (data.proposedDate is string && data.proposedDate.size() > 0))
+        && (!('proposedStartTime' in data) || (data.proposedStartTime is string && data.proposedStartTime.size() > 0))
+        && (!('proposedEndTime' in data) || (data.proposedEndTime is string && data.proposedEndTime.size() > 0))
+        && (!('googleCalendarEventId' in data) || data.googleCalendarEventId == null || data.googleCalendarEventId is string)
+        && (!('confirmedByPatient' in data) || data.confirmedByPatient is bool);
     }
 
     function isValidBookingSlot(data) {
@@ -45,14 +89,14 @@ service cloud.firestore {
 
     match /bookings/{bookingId} {
       allow create: if isValidBooking(request.resource.data);
-      allow read, update: if request.auth != null;
-      allow delete: if request.auth != null;
+      allow read, delete: if isStaff();
+      allow update: if isStaff() && isValidBookingUpdate(request.resource.data);
     }
     match /bookingSlots/{slotId} {
       allow read: if true;
       allow create: if isValidBookingSlot(request.resource.data);
       allow update: if false;
-      allow delete: if request.auth != null;
+      allow delete: if isStaff();
     }
     match /counters/{counterId} {
       allow read: if true;

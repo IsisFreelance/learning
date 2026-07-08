@@ -31,6 +31,11 @@ export default async function handler(req, res) {
   }
 
   const { bookingId } = req.body
+  if (typeof bookingId !== 'string' || !bookingId) {
+    res.status(400).json({ error: 'Missing bookingId' })
+    return
+  }
+
   const bookingRef = adminDb.collection('bookings').doc(bookingId)
   const snap = await bookingRef.get()
   const booking = snap.exists ? snap.data() : null

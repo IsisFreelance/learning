@@ -157,8 +157,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const proto = req.headers['x-forwarded-proto'] || 'https'
-    const manageLink = `${proto}://${req.headers.host}/manage-booking?bookingId=${bookingId}&token=${booking.manageToken}`
+    const manageLink = `${process.env.PUBLIC_BASE_URL}/manage-booking?bookingId=${bookingId}&token=${booking.manageToken}`
     await sendRescheduleEmail({
       to: booking.email,
       name: booking.name,

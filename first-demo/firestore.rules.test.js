@@ -69,9 +69,34 @@ describe('bookings collection', () => {
     await assertFails(getDoc(doc(db, 'bookings', 'test1')))
   })
 
-  it('lets a logged-in user read bookings', async () => {
-    const db = testEnv.authenticatedContext('staff-uid').firestore()
+  it('blocks a logged-in user without the staff claim from reading bookings', async () => {
+    const db = testEnv.authenticatedContext('random-uid').firestore()
+    await assertFails(getDoc(doc(db, 'bookings', 'test1')))
+  })
+
+  it('lets a staff user read bookings', async () => {
+    const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
     await assertSucceeds(getDoc(doc(db, 'bookings', 'test1')))
+  })
+
+  it('blocks a logged-in user without the staff claim from updating a booking', async () => {
+    const db = testEnv.authenticatedContext('random-uid').firestore()
+    await assertFails(updateDoc(doc(db, 'bookings', 'test1'), { status: 'Confirmed' }))
+  })
+
+  it('lets a staff user make a recognized update, like confirming a booking', async () => {
+    const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
+    await assertSucceeds(updateDoc(doc(db, 'bookings', 'test1'), { status: 'Confirmed' }))
+  })
+
+  it('blocks a staff user from writing an unrecognized field on update', async () => {
+    const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
+    await assertFails(updateDoc(doc(db, 'bookings', 'test1'), { notes: 'not allowed' }))
+  })
+
+  it('blocks a staff user from setting a recognized field to the wrong type', async () => {
+    const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
+    await assertFails(updateDoc(doc(db, 'bookings', 'test1'), { totalMinutes: 'thirty' }))
   })
 
   it('blocks anonymous users from deleting a booking', async () => {
@@ -79,8 +104,13 @@ describe('bookings collection', () => {
     await assertFails(deleteDoc(doc(db, 'bookings', 'test1')))
   })
 
-  it('lets a logged-in user delete a booking', async () => {
-    const db = testEnv.authenticatedContext('staff-uid').firestore()
+  it('blocks a logged-in user without the staff claim from deleting a booking', async () => {
+    const db = testEnv.authenticatedContext('random-uid').firestore()
+    await assertFails(deleteDoc(doc(db, 'bookings', 'test1')))
+  })
+
+  it('lets a staff user delete a booking', async () => {
+    const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
     await assertSucceeds(deleteDoc(doc(db, 'bookings', 'test1')))
   })
 })
@@ -97,8 +127,8 @@ describe('bookingSlots collection', () => {
     await assertFails(setDoc(doc(db, 'bookingSlots', 'slot2'), { date: '2026-07-07' }))
   })
 
-  it('never allows updating a slot, even when logged in', async () => {
-    const db = testEnv.authenticatedContext('staff-uid').firestore()
+  it('never allows updating a slot, even when logged in as staff', async () => {
+    const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
     await assertFails(updateDoc(doc(db, 'bookingSlots', 'slot1'), { date: '2026-07-08' }))
   })
 
@@ -107,8 +137,13 @@ describe('bookingSlots collection', () => {
     await assertFails(deleteDoc(doc(db, 'bookingSlots', 'slot1')))
   })
 
-  it('lets a logged-in user delete a slot', async () => {
-    const db = testEnv.authenticatedContext('staff-uid').firestore()
+  it('blocks a logged-in user without the staff claim from deleting a slot', async () => {
+    const db = testEnv.authenticatedContext('random-uid').firestore()
+    await assertFails(deleteDoc(doc(db, 'bookingSlots', 'slot1')))
+  })
+
+  it('lets a staff user delete a slot', async () => {
+    const db = testEnv.authenticatedContext('staff-uid', { staff: true }).firestore()
     await assertSucceeds(deleteDoc(doc(db, 'bookingSlots', 'slot1')))
   })
 })

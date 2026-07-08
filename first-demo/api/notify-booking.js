@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore'
 import Sentry from './_lib/sentry.js'
 import { sendBookingEmail } from './_lib/sendEmail.js'
 import { adminDb } from './_lib/firebaseAdmin.js'
@@ -48,18 +49,29 @@ export default async function handler(req, res) {
     return
   }
   const booking = snap.data()
+
+  // Idempotent by design: bookingId isn't actually secret (bookingSlots is
+  // publicly readable, so any bookingId can be read off it), so this route
+  // has to be safe to call more than once for the same booking — a replay
+  // must be a no-op, not a second real email and a second calendar event.
+  if (booking.notifiedAt) {
+    res.status(200).json({ ok: true })
+    return
+  }
+
   const calendarLink = buildCalendarLink(booking)
-  const proto = req.headers['x-forwarded-proto'] || 'https'
-  const manageLink = `${proto}://${req.headers.host}/manage-booking?bookingId=${bookingId}&token=${booking.manageToken}`
+  const manageLink = `${process.env.PUBLIC_BASE_URL}/manage-booking?bookingId=${bookingId}&token=${booking.manageToken}`
 
   // Creating the practice's calendar event is independent from sending the
   // email — one failing must never block the other.
-  try {
-    const eventId = await createCalendarEvent(booking)
-    await bookingRef.update({ googleCalendarEventId: eventId })
-  } catch (err) {
-    console.error('Failed to create Google Calendar event:', err)
-    Sentry.captureException(err)
+  if (!booking.googleCalendarEventId) {
+    try {
+      const eventId = await createCalendarEvent(booking)
+      await bookingRef.update({ googleCalendarEventId: eventId })
+    } catch (err) {
+      console.error('Failed to create Google Calendar event:', err)
+      Sentry.captureException(err)
+    }
   }
 
   try {
@@ -71,12 +83,16 @@ export default async function handler(req, res) {
       const token = generateConfirmToken()
       await bookingRef.update({ confirmToken: token, reminderSent: true })
 
-      const confirmLink = `${proto}://${req.headers.host}/api/confirm-appointment?bookingId=${bookingId}&token=${token}`
+      const confirmLink = `${process.env.PUBLIC_BASE_URL}/api/confirm-appointment?bookingId=${bookingId}&token=${token}`
 
       await sendBookingEmail({ ...booking, to: booking.email, confirmLink, calendarLink, manageLink })
     } else {
       await sendBookingEmail({ ...booking, to: booking.email, calendarLink, manageLink })
     }
+    // Only marked once the email actually went out — a send failure below
+    // must leave notifiedAt unset so a retry can still succeed, instead of
+    // permanently no-oping on a booking that was never actually emailed.
+    await bookingRef.update({ notifiedAt: FieldValue.serverTimestamp() })
   } catch (err) {
     console.error('Failed to send confirmation email:', err)
     Sentry.captureException(err)

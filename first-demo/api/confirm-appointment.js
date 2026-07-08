@@ -1,5 +1,6 @@
 import Sentry from './_lib/sentry.js'
 import { adminDb } from './_lib/firebaseAdmin.js'
+import { tokensMatch } from './_lib/tokens.js'
 import { checkRateLimit, getClientIp, RateLimitError } from './_lib/rateLimit.js'
 
 function htmlPage(title, message) {
@@ -44,7 +45,7 @@ export default async function handler(req, res) {
   const bookingRef = adminDb.collection('bookings').doc(bookingId)
   const snap = await bookingRef.get()
 
-  if (!snap.exists || snap.data().confirmToken !== token) {
+  if (!snap.exists || !tokensMatch(token, snap.data().confirmToken)) {
     res.status(404).send(htmlPage('Link not found', "This confirmation link isn't valid or has already been used."))
     return
   }
