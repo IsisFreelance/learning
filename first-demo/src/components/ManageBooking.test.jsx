@@ -101,4 +101,39 @@ describe('ManageBooking', () => {
     expect(await screen.findByText("You're all set!")).toBeInTheDocument()
     expect(screen.getByText(/9:00 AM/)).toBeInTheDocument()
   })
+
+  it('accepts a staff-proposed time with one click', async () => {
+    const proposedBookingResponse = {
+      ...validBookingResponse,
+      proposedDate: '2026-07-20',
+      proposedStartTime: '10:00',
+      proposedEndTime: '10:30',
+    }
+    global.fetch.mockImplementation((url) => {
+      if (url.startsWith('/api/manage-booking')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(proposedBookingResponse) })
+      }
+      if (url === '/api/reschedule-booking') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ ok: true, date: '2026-07-20', startTime: '10:00', endTime: '10:30' }),
+        })
+      }
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    const user = userEvent.setup()
+    render(<ManageBooking />)
+    await screen.findByText('BHD-000042', { exact: false })
+
+    expect(screen.getByText(/Proposed new time: 2026-07-20/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Accept this time' }))
+
+    expect(await screen.findByText("You're all set!")).toBeInTheDocument()
+    expect(screen.getByText(/10:00 AM/)).toBeInTheDocument()
+
+    const rescheduleCall = global.fetch.mock.calls.find(([url]) => url === '/api/reschedule-booking')
+    const body = JSON.parse(rescheduleCall[1].body)
+    expect(body).toMatchObject({ newDate: '2026-07-20', newStartMinutes: 600 })
+  })
 })

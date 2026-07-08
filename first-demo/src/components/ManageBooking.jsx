@@ -77,17 +77,18 @@ function ManageBooking() {
     return unsubscribe
   }, [date])
 
-  async function handleSubmit(e) {
-    e.preventDefault()
-    if (!date || startMinutes === '') return
-
+  // The one place that calls /api/reschedule-booking — used both by the
+  // form's normal submit and by "Accept this time" below, so accepting a
+  // staff-proposed time and picking your own time go through the exact
+  // same request instead of two parallel implementations.
+  async function submitReschedule(newDateVal, newStartMinutesVal) {
     setSubmitting(true)
     setSubmitError('')
     try {
       const res = await fetch('/api/reschedule-booking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingId, token, newDate: date, newStartMinutes: Number(startMinutes) }),
+        body: JSON.stringify({ bookingId, token, newDate: newDateVal, newStartMinutes: newStartMinutesVal }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -102,6 +103,16 @@ function ManageBooking() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    if (!date || startMinutes === '') return
+    submitReschedule(date, Number(startMinutes))
+  }
+
+  function acceptProposal() {
+    submitReschedule(booking.proposedDate, hhmmToMinutes(booking.proposedStartTime))
   }
 
   if (loading) {
@@ -143,6 +154,21 @@ function ManageBooking() {
         Currently: {booking.date} &middot; {formatTime12h(hhmmToMinutes(booking.startTime))} –{' '}
         {formatTime12h(hhmmToMinutes(booking.endTime))}
       </p>
+
+      {booking.proposedDate && (
+        <section className="auth-form">
+          <h2>We'd like to move your appointment</h2>
+          <p>
+            Proposed new time: {booking.proposedDate} &middot;{' '}
+            {formatTime12h(hhmmToMinutes(booking.proposedStartTime))} –{' '}
+            {formatTime12h(hhmmToMinutes(booking.proposedEndTime))}
+          </p>
+          <button className="btn-primary" type="button" onClick={acceptProposal} disabled={submitting}>
+            {submitting ? 'Confirming…' : 'Accept this time'}
+          </button>
+          <p>Or pick a different time below instead.</p>
+        </section>
+      )}
 
       <form className="booking-form" onSubmit={handleSubmit} noValidate>
         <h2>Pick a new time</h2>

@@ -56,5 +56,8 @@ export default async function handler(req, res) {
     endTime: booking.endTime,
     status: booking.status,
     name: booking.name,
+    proposedDate: booking.proposedDate || null,
+    proposedStartTime: booking.proposedStartTime || null,
+    proposedEndTime: booking.proposedEndTime || null,
   })
 }

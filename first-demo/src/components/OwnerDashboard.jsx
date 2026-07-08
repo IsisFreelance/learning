@@ -3,12 +3,16 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebas
 import * as Sentry from '@sentry/react'
 import { auth } from '../firebaseAuthClient'
 import {
+  computeAvailableStartTimes,
   deleteBooking,
   formatTime12h,
+  getBusinessHours,
   groupBookingsByDate,
   hhmmToMinutes,
   isBookingPast,
   listenToBookings,
+  listenToTakenSlotTimes,
+  minBookableDateStr,
   updateBookingStatus,
 } from '../lib/bookings'
 
@@ -46,6 +50,15 @@ function OwnerDashboard() {
   const [loadError, setLoadError] = useState('')
   const [actionError, setActionError] = useState('')
   const [updatingId, setUpdatingId] = useState(null)
+
+  const [proposingId, setProposingId] = useState(null)
+  const [proposeDate, setProposeDate] = useState('')
+  const [proposeStartMinutes, setProposeStartMinutes] = useState('')
+  const [proposeTakenSlotTimes, setProposeTakenSlotTimes] = useState([])
+  const [proposeLoadingSlots, setProposeLoadingSlots] = useState(false)
+  const [proposeSlotsError, setProposeSlotsError] = useState('')
+  const [proposeSubmitting, setProposeSubmitting] = useState(false)
+  const [proposeError, setProposeError] = useState('')
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -89,6 +102,62 @@ function OwnerDashboard() {
     )
     return unsubscribe
   }, [user])
+
+  useEffect(() => {
+    if (!proposeDate) return
+    setProposeLoadingSlots(true)
+    setProposeSlotsError('')
+    setProposeStartMinutes('')
+    const unsubscribe = listenToTakenSlotTimes(
+      proposeDate,
+      (times) => {
+        setProposeTakenSlotTimes(times)
+        setProposeLoadingSlots(false)
+      },
+      () => {
+        setProposeSlotsError("Couldn't check availability — please try again.")
+        setProposeLoadingSlots(false)
+      }
+    )
+    return unsubscribe
+  }, [proposeDate])
+
+  function togglePropose(bookingId) {
+    setProposingId((prev) => (prev === bookingId ? null : bookingId))
+    setProposeDate('')
+    setProposeStartMinutes('')
+    setProposeError('')
+  }
+
+  async function submitPropose(bookingId) {
+    if (!proposeDate || proposeStartMinutes === '') return
+
+    setProposeSubmitting(true)
+    setProposeError('')
+    try {
+      const idToken = await auth.currentUser.getIdToken()
+      const res = await fetch('/api/propose-reschedule', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ bookingId, newDate: proposeDate, newStartMinutes: Number(proposeStartMinutes) }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setProposeError(data.error || 'Could not propose that time. Please try again.')
+        return
+      }
+      togglePropose(bookingId)
+    } catch (err) {
+      console.error('Error proposing reschedule:', err)
+      Sentry.captureException(err)
+      setProposeError('Could not propose that time. Please try again.')
+    } finally {
+      setProposeSubmitting(false)
+    }
+  }
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -154,6 +223,13 @@ function OwnerDashboard() {
     }
     setUpdatingId(null)
   }
+
+  const proposingBooking = bookings.find((b) => b.id === proposingId)
+  const proposeBusinessHours = proposeDate ? getBusinessHours(proposeDate) : null
+  const proposeAvailableStartTimes =
+    proposeDate && proposingBooking && proposeBusinessHours
+      ? computeAvailableStartTimes(proposeDate, proposingBooking.totalMinutes, proposeTakenSlotTimes)
+      : []
 
   if (!authLoaded) return null
 
@@ -226,6 +302,12 @@ function OwnerDashboard() {
                       {formatTime12h(hhmmToMinutes(b.startTime))} –{' '}
                       {formatTime12h(hhmmToMinutes(b.endTime))}
                     </p>
+                    {b.proposedDate && (
+                      <p className="field-error">
+                        Reschedule proposed: {b.proposedDate} &middot; {formatTime12h(hhmmToMinutes(b.proposedStartTime))} –{' '}
+                        {formatTime12h(hhmmToMinutes(b.proposedEndTime))} — awaiting patient response
+                      </p>
+                    )}
                     <div className="booking-actions">
                       <button
                         className="btn-confirm"
@@ -248,7 +330,65 @@ function OwnerDashboard() {
                       >
                         Delete
                       </button>
+                      <button
+                        className="btn-cancel"
+                        disabled={status === 'Cancelled' || isBookingPast(b) || updatingId === b.id}
+                        onClick={() => togglePropose(b.id)}
+                      >
+                        {proposingId === b.id ? 'Close' : 'Propose reschedule'}
+                      </button>
                     </div>
+
+                    {proposingId === b.id && (
+                      <div className="form-field">
+                        <label className="form-field">
+                          Date
+                          <input
+                            type="date"
+                            min={minBookableDateStr()}
+                            value={proposeDate}
+                            onChange={(e) => setProposeDate(e.target.value)}
+                          />
+                        </label>
+
+                        {proposeDate && proposeBusinessHours && (
+                          <label className="form-field">
+                            Start time
+                            {proposeLoadingSlots ? (
+                              <p>Checking availability…</p>
+                            ) : proposeSlotsError ? (
+                              <p className="field-error">{proposeSlotsError}</p>
+                            ) : (
+                              <select value={proposeStartMinutes} onChange={(e) => setProposeStartMinutes(e.target.value)}>
+                                <option value="">Choose a time</option>
+                                {proposeAvailableStartTimes.map((m) => (
+                                  <option key={m} value={m}>
+                                    {formatTime12h(m)}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {!proposeLoadingSlots && !proposeSlotsError && proposeAvailableStartTimes.length === 0 && (
+                              <p className="field-error">No times available that day — try another date.</p>
+                            )}
+                          </label>
+                        )}
+                        {proposeDate && !proposeBusinessHours && (
+                          <p className="field-error">We're closed Sundays — please pick another date.</p>
+                        )}
+
+                        {proposeError && <p className="form-error">{proposeError}</p>}
+
+                        <button
+                          className="btn-primary"
+                          type="button"
+                          disabled={proposeSubmitting || !proposeDate || proposeStartMinutes === ''}
+                          onClick={() => submitPropose(b.id)}
+                        >
+                          {proposeSubmitting ? 'Sending…' : 'Send proposal'}
+                        </button>
+                      </div>
+                    )}
                   </article>
                 )
               })}

@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore'
 import Sentry from './_lib/sentry.js'
 import { adminDb } from './_lib/firebaseAdmin.js'
 import { tokensMatch } from './_lib/tokens.js'
@@ -123,6 +124,12 @@ export default async function handler(req, res) {
         startTime: newStartTime,
         endTime: newEndTime,
         status: 'Pending',
+        // A move (whether the patient accepted a staff proposal or picked
+        // their own time) always clears any pending proposal — it can
+        // never linger stale once the booking has actually moved.
+        proposedDate: FieldValue.delete(),
+        proposedStartTime: FieldValue.delete(),
+        proposedEndTime: FieldValue.delete(),
       })
     })
   } catch (err) {

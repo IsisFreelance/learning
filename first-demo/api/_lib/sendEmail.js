@@ -115,6 +115,40 @@ export async function sendRescheduleEmail({
   })
 }
 
+export async function sendReschedProposalEmail({
+  to,
+  name,
+  reference,
+  services,
+  proposedDate,
+  proposedStartTime,
+  proposedEndTime,
+  manageLink,
+}) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+
+  const serviceList = services.join(', ')
+
+  await sgMail.send({
+    to,
+    from: process.env.SENDER_EMAIL,
+    subject: `Bright Harbor Dental — Requesting to Reschedule Your Appointment (${reference})`,
+    text: `Hi ${name},\n\nWe'd like to move your appointment to a new time.\n\nReference: ${reference}\nServices: ${serviceList}\nProposed new time: ${proposedDate} ${proposedStartTime} - ${proposedEndTime}\n\nIf that works for you, click below to accept it — or pick a different time if it doesn't:\n${manageLink}\n\nBright Harbor Dental`,
+    html: `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>We'd like to move your appointment to a new time.</p>
+      <ul>
+        <li><strong>Reference:</strong> ${escapeHtml(reference)}</li>
+        <li><strong>Services:</strong> ${escapeHtml(serviceList)}</li>
+        <li><strong>Proposed new time:</strong> ${escapeHtml(proposedDate)} ${escapeHtml(proposedStartTime)} - ${escapeHtml(proposedEndTime)}</li>
+      </ul>
+      <p>If that works for you, click below to accept it — or pick a different time if it doesn't:</p>
+      <p><a href="${manageLink}">Review this proposed time</a></p>
+      <p>Bright Harbor Dental</p>
+    `,
+  })
+}
+
 export async function sendCancellationEmail({ to, name, reference, services, date, startTime, endTime }) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 
