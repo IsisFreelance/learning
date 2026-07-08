@@ -11,43 +11,26 @@ import {
   writeBatch,
 } from 'firebase/firestore'
 import { db } from '../firebaseClient'
+import { computeSlotKeys, hhmmToMinutes, minutesToHHMM } from './scheduling'
 
-const SLOT_INTERVAL_MINUTES = 15
+export {
+  computeAvailableStartTimes,
+  computeSlotKeys,
+  formatTime12h,
+  getBusinessHours,
+  hhmmToMinutes,
+  isBookingPast,
+  minutesToHHMM,
+} from './scheduling'
 
-export function minutesToHHMM(mins) {
-  const h = Math.floor(mins / 60).toString().padStart(2, '0')
-  const m = (mins % 60).toString().padStart(2, '0')
-  return `${h}:${m}`
-}
-
-export function hhmmToMinutes(hhmm) {
-  const [h, m] = hhmm.split(':').map(Number)
-  return h * 60 + m
-}
-
-export function formatTime12h(minutes) {
-  const h24 = Math.floor(minutes / 60)
-  const m = minutes % 60
-  const period = h24 >= 12 ? 'PM' : 'AM'
-  let h12 = h24 % 12
-  if (h12 === 0) h12 = 12
-  return `${h12}:${m.toString().padStart(2, '0')} ${period}`
-}
-
-// Business hours, in minutes from midnight. Returns null when closed (Sundays).
-export function getBusinessHours(dateStr) {
-  const day = new Date(`${dateStr}T00:00:00`).getDay() // 0 = Sunday, 6 = Saturday
-  if (day === 0) return null
-  if (day === 6) return { open: 9 * 60, close: 14 * 60 } // Sat 9am-2pm
-  return { open: 8 * 60, close: 18 * 60 } // Mon-Fri 8am-6pm
-}
-
-export function computeSlotKeys(dateStr, startMinutes, totalMinutes) {
-  const keys = []
-  for (let m = startMinutes; m < startMinutes + totalMinutes; m += SLOT_INTERVAL_MINUTES) {
-    keys.push(`${dateStr}_${minutesToHHMM(m)}`)
-  }
-  return keys
+// A patient-facing secret for the "manage my booking" link (see
+// ManageBooking.jsx / api/manage-booking.js) — generated the same way
+// api/_lib/tokens.js does server-side (crypto.randomBytes), just with the
+// browser's equivalent RNG, since this transaction runs client-side.
+function randomToken() {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 // Live availability for a given date — onChange fires immediately, then again
@@ -58,28 +41,6 @@ export function listenToTakenSlotTimes(dateStr, onChange) {
   return onSnapshot(q, (snap) => {
     onChange(snap.docs.map((d) => d.data().time))
   })
-}
-
-// Given already-taken slot times for the date, returns available start times (in minutes).
-export function computeAvailableStartTimes(dateStr, totalMinutes, takenSlotTimes) {
-  const hours = getBusinessHours(dateStr)
-  if (!hours || totalMinutes <= 0) return []
-
-  const taken = new Set(takenSlotTimes)
-  const options = []
-
-  for (let start = hours.open; start + totalMinutes <= hours.close; start += SLOT_INTERVAL_MINUTES) {
-    let free = true
-    for (let m = start; m < start + totalMinutes; m += SLOT_INTERVAL_MINUTES) {
-      if (taken.has(minutesToHHMM(m))) {
-        free = false
-        break
-      }
-    }
-    if (free) options.push(start)
-  }
-
-  return options
 }
 
 // Thrown when the requested time is no longer available (lost a race to another booking).
@@ -94,6 +55,7 @@ export async function createBooking({ services, totalMinutes, date, startMinutes
   const slotKeys = computeSlotKeys(date, startMinutes, totalMinutes)
   const bookingRef = doc(collection(db, 'bookings'))
   const counterRef = doc(db, 'counters', 'bookings')
+  const manageToken = randomToken()
 
   return runTransaction(db, async (transaction) => {
     // All reads must happen before any writes in a Firestore transaction.
@@ -127,6 +89,7 @@ export async function createBooking({ services, totalMinutes, date, startMinutes
       phone,
       reference,
       status: 'Pending',
+      manageToken,
       createdAt: serverTimestamp(),
     })
     transaction.set(counterRef, { count: nextCount })
@@ -165,11 +128,6 @@ export async function deleteBooking(booking) {
   }
   batch.delete(doc(db, 'bookings', booking.id))
   await batch.commit()
-}
-
-// True once the appointment's end time has already passed.
-export function isBookingPast(booking) {
-  return new Date(`${booking.date}T${booking.endTime}`) < new Date()
 }
 
 // Buckets bookings by date (oldest date first), each day's bookings sorted by start time.

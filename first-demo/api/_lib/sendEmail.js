@@ -23,6 +23,7 @@ export async function sendBookingEmail({
   endTime,
   confirmLink,
   calendarLink,
+  manageLink,
   subject,
 }) {
   sgMail.setApiKey(process.env.SENDGRID_API_KEY)
@@ -44,11 +45,18 @@ export async function sendBookingEmail({
     ? `<p><a href="${calendarLink}">Add to Google Calendar</a></p>`
     : ''
 
+  const manageTextBlock = manageLink
+    ? `\n\nNeed a different time? Manage your booking here:\n${manageLink}`
+    : ''
+  const manageHtmlBlock = manageLink
+    ? `<p><a href="${manageLink}">Manage or reschedule my booking</a></p>`
+    : ''
+
   await sgMail.send({
     to,
     from: process.env.SENDER_EMAIL,
     subject: subject || defaultSubject,
-    text: `Hi ${name},\n\nYour appointment is confirmed.\n\nReference: ${reference}\nServices: ${serviceList}\nDate: ${date}\nTime: ${startTime} - ${endTime}${confirmTextBlock}${calendarTextBlock}\n\nWe look forward to seeing you.\n\nBright Harbor Dental`,
+    text: `Hi ${name},\n\nYour appointment is confirmed.\n\nReference: ${reference}\nServices: ${serviceList}\nDate: ${date}\nTime: ${startTime} - ${endTime}${confirmTextBlock}${calendarTextBlock}${manageTextBlock}\n\nWe look forward to seeing you.\n\nBright Harbor Dental`,
     html: `
       <p>Hi ${escapeHtml(name)},</p>
       <p>Your appointment is confirmed.</p>
@@ -60,6 +68,47 @@ export async function sendBookingEmail({
       </ul>
       ${confirmHtmlBlock}
       ${calendarHtmlBlock}
+      ${manageHtmlBlock}
+      <p>We look forward to seeing you.</p>
+      <p>Bright Harbor Dental</p>
+    `,
+  })
+}
+
+export async function sendRescheduleEmail({
+  to,
+  name,
+  reference,
+  services,
+  oldDate,
+  oldStartTime,
+  oldEndTime,
+  date,
+  startTime,
+  endTime,
+  manageLink,
+}) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+
+  const serviceList = services.join(', ')
+  const manageTextBlock = manageLink ? `\n\nNeed to change it again? Manage your booking here:\n${manageLink}` : ''
+  const manageHtmlBlock = manageLink ? `<p><a href="${manageLink}">Manage or reschedule my booking</a></p>` : ''
+
+  await sgMail.send({
+    to,
+    from: process.env.SENDER_EMAIL,
+    subject: `Bright Harbor Dental — Appointment Rescheduled (${reference})`,
+    text: `Hi ${name},\n\nYour appointment has been rescheduled.\n\nReference: ${reference}\nServices: ${serviceList}\nPrevious time: ${oldDate} ${oldStartTime} - ${oldEndTime}\nNew time: ${date} ${startTime} - ${endTime}${manageTextBlock}\n\nWe look forward to seeing you.\n\nBright Harbor Dental`,
+    html: `
+      <p>Hi ${escapeHtml(name)},</p>
+      <p>Your appointment has been rescheduled.</p>
+      <ul>
+        <li><strong>Reference:</strong> ${escapeHtml(reference)}</li>
+        <li><strong>Services:</strong> ${escapeHtml(serviceList)}</li>
+        <li><strong>Previous time:</strong> ${escapeHtml(oldDate)} ${escapeHtml(oldStartTime)} - ${escapeHtml(oldEndTime)}</li>
+        <li><strong>New time:</strong> ${escapeHtml(date)} ${escapeHtml(startTime)} - ${escapeHtml(endTime)}</li>
+      </ul>
+      ${manageHtmlBlock}
       <p>We look forward to seeing you.</p>
       <p>Bright Harbor Dental</p>
     `,

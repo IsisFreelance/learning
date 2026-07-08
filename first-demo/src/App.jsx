@@ -10,6 +10,10 @@ import './App.css'
 // (including Firebase Auth) — only fetched when someone actually visits /owner.
 const OwnerDashboard = lazy(() => import('./components/OwnerDashboard'))
 
+// Lazy-loaded too — only fetched by someone who actually opens a
+// "manage my booking" link from their confirmation email.
+const ManageBooking = lazy(() => import('./components/ManageBooking'))
+
 function OfflineBanner() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
 
@@ -36,6 +40,15 @@ function App() {
       <Suspense fallback={null}>
         <OfflineBanner />
         <OwnerDashboard />
+      </Suspense>
+    )
+  }
+
+  if (window.location.pathname === '/manage-booking') {
+    return (
+      <Suspense fallback={null}>
+        <OfflineBanner />
+        <ManageBooking />
       </Suspense>
     )
   }

@@ -17,6 +17,7 @@ const validBooking = {
   reference: 'BHD-000001',
   status: 'Pending',
   createdAt: serverTimestamp(),
+  manageToken: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4',
 }
 
 const validBookingSlot = {

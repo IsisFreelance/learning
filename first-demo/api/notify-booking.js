@@ -49,6 +49,8 @@ export default async function handler(req, res) {
   }
   const booking = snap.data()
   const calendarLink = buildCalendarLink(booking)
+  const proto = req.headers['x-forwarded-proto'] || 'https'
+  const manageLink = `${proto}://${req.headers.host}/manage-booking?bookingId=${bookingId}&token=${booking.manageToken}`
 
   // Creating the practice's calendar event is independent from sending the
   // email — one failing must never block the other.
@@ -69,12 +71,11 @@ export default async function handler(req, res) {
       const token = generateConfirmToken()
       await bookingRef.update({ confirmToken: token, reminderSent: true })
 
-      const proto = req.headers['x-forwarded-proto'] || 'https'
       const confirmLink = `${proto}://${req.headers.host}/api/confirm-appointment?bookingId=${bookingId}&token=${token}`
 
-      await sendBookingEmail({ ...booking, to: booking.email, confirmLink, calendarLink })
+      await sendBookingEmail({ ...booking, to: booking.email, confirmLink, calendarLink, manageLink })
     } else {
-      await sendBookingEmail({ ...booking, to: booking.email, calendarLink })
+      await sendBookingEmail({ ...booking, to: booking.email, calendarLink, manageLink })
     }
   } catch (err) {
     console.error('Failed to send confirmation email:', err)
