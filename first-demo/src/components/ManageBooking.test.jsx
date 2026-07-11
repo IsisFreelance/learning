@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ManageBooking from './ManageBooking'
 
@@ -73,7 +73,7 @@ describe('ManageBooking', () => {
 
     expect(await screen.findByText('BHD-000042', { exact: false })).toBeInTheDocument()
     expect(screen.getByText(/Currently: 2026-07-13/)).toBeInTheDocument()
-    expect(screen.getByLabelText('Date')).toBeInTheDocument()
+    expect(screen.getByText('Date')).toBeInTheDocument()
   })
 
   it('reschedules to a new time and shows confirmation', async () => {
@@ -94,7 +94,7 @@ describe('ManageBooking', () => {
     render(<ManageBooking />)
     await screen.findByText('BHD-000042', { exact: false })
 
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: nextMonday() } })
+    await user.click(document.querySelector(`[data-date="${nextMonday()}"]`))
     await user.selectOptions(await screen.findByLabelText('Start time'), '540')
     await user.click(screen.getByRole('button', { name: 'Confirm new time' }))
 

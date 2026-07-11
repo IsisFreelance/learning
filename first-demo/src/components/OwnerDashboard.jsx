@@ -12,9 +12,9 @@ import {
   isBookingPast,
   listenToBookings,
   listenToTakenSlotTimes,
-  minBookableDateStr,
   updateBookingStatus,
 } from '../lib/bookings'
+import DateField from './DateField'
 
 function formatDayHeading(dateStr) {
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
@@ -360,15 +360,7 @@ function OwnerDashboard() {
 
                     {proposingId === b.id && (
                       <div className="form-field">
-                        <label className="form-field">
-                          Date
-                          <input
-                            type="date"
-                            min={minBookableDateStr()}
-                            value={proposeDate}
-                            onChange={(e) => setProposeDate(e.target.value)}
-                          />
-                        </label>
+                        <DateField value={proposeDate} onChange={setProposeDate} />
 
                         {proposeDate && proposeBusinessHours && (
                           <label className="form-field">

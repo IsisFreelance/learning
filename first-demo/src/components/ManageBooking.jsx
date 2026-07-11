@@ -6,8 +6,8 @@ import {
   getBusinessHours,
   hhmmToMinutes,
   listenToTakenSlotTimes,
-  minBookableDateStr,
 } from '../lib/bookings'
+import DateField from './DateField'
 
 function getLinkParams() {
   const params = new URLSearchParams(window.location.search)
@@ -173,10 +173,7 @@ function ManageBooking() {
       <form className="booking-form" onSubmit={handleSubmit} noValidate>
         <h2>Pick a new time</h2>
 
-        <label className="form-field">
-          Date
-          <input type="date" min={minBookableDateStr()} value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
+        <DateField value={date} onChange={setDate} />
 
         {date && businessHours && (
           <label className="form-field">

@@ -25,7 +25,7 @@ test('a visitor can book a real appointment end to end', async ({ page }) => {
   await page.getByRole('button', { name: 'Book an appointment' }).click()
 
   await page.getByLabel('Cleanings', { exact: false }).check()
-  await page.getByLabel('Date').fill(nextMonday())
+  await page.locator(`[data-date="${nextMonday()}"]`).click()
   await page.getByLabel('Start time').selectOption('480')
   await page.getByLabel('Name').fill('Playwright Test Patient')
   await page.getByLabel('Email').fill('playwright-test@example.com')

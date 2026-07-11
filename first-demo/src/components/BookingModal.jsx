@@ -11,6 +11,7 @@ import {
   minBookableDateStr,
   SlotTakenError,
 } from '../lib/bookings'
+import DateField from './DateField'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -226,11 +227,7 @@ function BookingModal({ onClose }) {
               {fieldErrors.services && <p className="field-error">{fieldErrors.services}</p>}
             </fieldset>
 
-            <label className="form-field">
-              Date
-              <input type="date" min={minBookableDateStr()} value={date} onChange={(e) => setDate(e.target.value)} />
-              {fieldErrors.date && <p className="field-error">{fieldErrors.date}</p>}
-            </label>
+            <DateField value={date} onChange={setDate} error={fieldErrors.date} />
 
             {date && businessHours && (
               <label className="form-field">

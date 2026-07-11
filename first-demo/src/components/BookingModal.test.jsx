@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import BookingModal from './BookingModal'
 
@@ -41,10 +41,7 @@ function nextMonday() {
 
 async function fillValidForm(user) {
   await user.click(screen.getByLabelText(/Cleanings/))
-  // jsdom's date input needs its value set directly — userEvent.type()
-  // simulates per-character keystrokes, which real date inputs handle via
-  // a native segment-editing widget that jsdom doesn't emulate.
-  fireEvent.change(screen.getByLabelText('Date'), { target: { value: nextMonday() } })
+  await user.click(document.querySelector(`[data-date="${nextMonday()}"]`))
   await user.selectOptions(await screen.findByLabelText('Start time'), '480')
   await user.type(screen.getByLabelText('Name'), 'Jane Doe')
   await user.type(screen.getByLabelText('Email'), 'jane@example.com')
