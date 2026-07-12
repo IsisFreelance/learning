@@ -9,7 +9,12 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
 
 ## Status
 
-**Current phase: 0 — Foundations (in progress)**
+**Phase 0 done. Current phase: 1 — Photo intake & queue (not started).**
+
+Live: https://second-demo-pi.vercel.app/ (frontend) talks to
+https://second-demo-w5t7.onrender.com (backend, Render free tier — spins
+down after ~15 min idle, first load after that can take 30-60s) which
+talks to Neon Postgres. All three confirmed working end to end.
 
 ## Tech stack
 
@@ -22,7 +27,7 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
 
 ## Phases
 
-- [ ] **Phase 0 — Foundations.** FastAPI + SQLAlchemy + Alembic skeleton,
+- [x] **Phase 0 — Foundations.** FastAPI + SQLAlchemy + Alembic skeleton,
       health endpoint; Vite/React/TS skeleton hitting it; deployed live
       on Render + Neon + Vercel from day one.
 - [ ] **Phase 1 — Photo intake & queue.** Upload (desktop + mobile camera),
@@ -45,6 +50,11 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
       snapshots, filterable review UI, CSV export of a run.
 - [ ] **Phase 7 — Catalog/export preparation** *(stretch)*. Preflight
       validation, dry-run preview export — no real external write.
+
+## Known issues / follow-ups
+
+- **Local Postgres is listening on all network interfaces** (`listen_addresses = '*'` in `postgresql.conf`, confirmed via `netstat` showing `0.0.0.0:5432`), not just `localhost`. Low real-world risk right now — `pg_hba.conf` separately restricts actual logins to `127.0.0.1`/`::1`, so LAN connections get rejected at auth — but the tighter, correct setup is `listen_addresses = 'localhost'`. Fixing it needs a real Postgres service restart, which hit the same Windows-service permission wall documented below — fold this fix into the next time the Postgres setup itself is being touched, rather than a one-off reinstall just for this.
+- **Windows can't stop/start/reload the `postgresql-x64-17` service directly** (PowerShell's `Stop-Service`/`pg_ctl reload` both fail with permission errors in this environment) — only winget's own install/uninstall/reinstall flow has enough elevation to touch it. Keep this in mind for any future Postgres config change that needs a restart.
 
 ## How to resume this project in a new conversation
 
