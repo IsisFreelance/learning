@@ -9,22 +9,27 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
 
 ## Status
 
-**Phase 0 and Phase 1 done. Current phase: 2 — OCR preflight & extraction (not started).**
+**Phase 0, Phase 1, and Phase 2 done. Current phase: 3 — manual review & confirmation (not started).**
 
 Live: https://second-demo-pi.vercel.app/ (frontend) talks to
-https://second-demo-w5t7.onrender.com (backend, Render free tier — spins
-down after ~15 min idle, first load after that can take 30-60s) which
-talks to Neon Postgres and Supabase Storage (private bucket, signed
-URLs). Full upload → thumbnail → queue → status-transition → restore →
-delete flow confirmed working end to end against the live deployment,
-not just locally.
+https://docker-demo-obpu.onrender.com (backend — Docker runtime on
+Render's free tier, replacing the original native-Python service so
+Tesseract, a system-level program, could be installed; still spins down
+after ~15 min idle, first load after that can take 30-60s) which talks
+to Neon Postgres and Supabase Storage (private bucket, signed URLs).
+Full upload → thumbnail → queue → status-transition → restore → delete
+→ OCR extract flow confirmed working end to end against the live
+deployment, not just locally.
 
 ## Tech stack
 
-- Backend: Python + FastAPI, SQLAlchemy, Alembic migrations
+- Backend: Python + FastAPI, SQLAlchemy, Alembic migrations, Docker
+  (needed once Tesseract required a system-level install, not just a
+  Python package)
 - Database: PostgreSQL (native local install; Neon for hosting)
 - Frontend: React + TypeScript + Vite
-- OCR: Tesseract first (free), behind a swappable provider interface
+- OCR: Tesseract (free, self-hosted), behind a swappable provider
+  interface (`backend/app/ocr.py`)
 - Hosting: Render (backend) + Neon (database) + Vercel (frontend), all
   free tiers, no paid OCR/AI provider yet
 
@@ -37,7 +42,7 @@ not just locally.
       server-side validation, controlled storage, thumbnails,
       `intake_items` with statuses, queue UI with filter/select/archive/
       reject/restore/delete.
-- [ ] **Phase 2 — OCR preflight & extraction (Tesseract).** Hash-based
+- [x] **Phase 2 — OCR preflight & extraction (Tesseract).** Hash-based
       cache, preflight endpoint (cached/available/blocked + reason),
       Tesseract extraction with per-field confidence/source.
 - [ ] **Phase 3 — Manual review & confirmation.** Review UI (photo +
@@ -72,6 +77,8 @@ not just locally.
   OCR calls and any future external API calls need the same treatment.
 - **Local Postgres is listening on all network interfaces** (`listen_addresses = '*'` in `postgresql.conf`, confirmed via `netstat` showing `0.0.0.0:5432`), not just `localhost`. Low real-world risk right now — `pg_hba.conf` separately restricts actual logins to `127.0.0.1`/`::1`, so LAN connections get rejected at auth — but the tighter, correct setup is `listen_addresses = 'localhost'`. Fixing it needs a real Postgres service restart, which hit the same Windows-service permission wall documented below — fold this fix into the next time the Postgres setup itself is being touched, rather than a one-off reinstall just for this.
 - **Windows can't stop/start/reload the `postgresql-x64-17` service directly** (PowerShell's `Stop-Service`/`pg_ctl reload` both fail with permission errors in this environment) — only winget's own install/uninstall/reinstall flow has enough elevation to touch it. Keep this in mind for any future Postgres config change that needs a restart.
+- **OCR extraction is capped to 2 concurrent runs app-wide** (`_ocr_concurrency` in `app/routers/intake.py`), found during Phase 2's security review — Tesseract is CPU-heavy and shares the same worker thread pool as every other blocking call (Supabase uploads/downloads), so without a cap a burst of OCR requests could stall unrelated requests for everyone on this single-process free-tier container. Revisit if Phase 2's usage ever outgrows a single small container (a real job queue, or a dedicated OCR worker, would be the proper fix).
+- **When migrating a Render service (e.g. native Python → Docker for Phase 2), env vars must be copied value-by-value, not assumed** — two real deploy failures happened this way: `DATABASE_URL` was pasted as a near-miss instead of the exact Neon string, and `FRONTEND_ORIGIN` didn't exactly match the Vercel URL (CORS is a strict string match, no trailing slash). Also: local-only settings like `TESSERACT_CMD` (only needed on Windows, where Tesseract isn't on PATH) should never be copied to a deployed environment — they override behavior that's supposed to differ between local and production. Double-check each variable individually after any service migration rather than trusting a bulk copy.
 
 ## How to resume this project in a new conversation
 
