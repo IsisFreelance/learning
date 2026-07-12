@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     database_url: str
     frontend_origin: str = "http://localhost:5173"
 
+    supabase_url: str
+    supabase_service_role_key: str
+    supabase_storage_bucket: str = "intake-photos"
+
     @field_validator("database_url")
     @classmethod
     def use_psycopg_driver(cls, v: str) -> str:
@@ -18,6 +22,14 @@ class Settings(BaseSettings):
         if v.startswith("postgresql://"):
             return v.replace("postgresql://", "postgresql+psycopg://", 1)
         return v
+
+    @field_validator("supabase_url")
+    @classmethod
+    def strip_rest_suffix(cls, v: str) -> str:
+        # The dashboard's "Project URL" field and the REST endpoint URL
+        # look similar enough to paste the wrong one — normalize either
+        # to the bare project URL the SDK actually expects.
+        return v.rstrip("/").removesuffix("/rest/v1")
 
 
 settings = Settings()
