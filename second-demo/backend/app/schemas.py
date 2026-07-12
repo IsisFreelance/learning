@@ -20,3 +20,26 @@ class IntakeItemOut(BaseModel):
 
 class StatusUpdateIn(BaseModel):
     status: IntakeStatus
+
+
+class OcrPreflightOut(BaseModel):
+    status: str  # "cached" | "available" | "blocked"
+    reason: str | None = None
+
+
+class OcrLineOut(BaseModel):
+    text: str
+    confidence: float
+
+
+class FieldGuessOut(BaseModel):
+    value: str | None
+    confidence: float
+    source: str
+
+
+class OcrResultOut(BaseModel):
+    raw_text: str
+    lines: list[OcrLineOut]
+    title_guess: FieldGuessOut
+    price_guess: FieldGuessOut

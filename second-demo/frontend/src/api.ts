@@ -48,3 +48,22 @@ export async function updateIntakeItemStatus(id: string, status: IntakeStatus): 
   if (!res.ok) throw new Error(await readErrorMessage(res, `Update failed (HTTP ${res.status}).`))
   return res.json()
 }
+
+export interface OcrFieldGuess {
+  value: string | null
+  confidence: number
+  source: string
+}
+
+export interface OcrExtractResult {
+  raw_text: string
+  lines: Array<{ text: string; confidence: number }>
+  title_guess: OcrFieldGuess
+  price_guess: OcrFieldGuess
+}
+
+export async function runOcrExtract(id: string): Promise<OcrExtractResult> {
+  const res = await fetch(`${API_BASE_URL}/intake-items/${id}/ocr/extract`, { method: 'POST' })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `OCR failed (HTTP ${res.status}).`))
+  return res.json()
+}

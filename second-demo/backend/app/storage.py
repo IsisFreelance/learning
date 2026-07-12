@@ -12,6 +12,10 @@ def upload_bytes(path: str, content: bytes, content_type: str) -> None:
     _bucket.upload(path, content, file_options={"content-type": content_type})
 
 
+def download_bytes(path: str) -> bytes:
+    return _bucket.download(path)
+
+
 def create_signed_url(path: str) -> str:
     result = _bucket.create_signed_url(path, SIGNED_URL_EXPIRY_SECONDS)
     return result["signedURL"]

@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { listIntakeItems, updateIntakeItemStatus, type IntakeItem, type IntakeStatus } from '../api'
+import {
+  listIntakeItems,
+  runOcrExtract,
+  updateIntakeItemStatus,
+  type IntakeItem,
+  type IntakeStatus,
+  type OcrExtractResult,
+} from '../api'
 
 const FILTERS: Array<IntakeStatus | 'all'> = ['all', 'new', 'archived', 'rejected', 'deleted']
 
@@ -23,6 +30,9 @@ function Queue({ refreshKey }: { refreshKey: number }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [ocrBusyId, setOcrBusyId] = useState<string | null>(null)
+  const [ocrResults, setOcrResults] = useState<Record<string, OcrExtractResult>>({})
+  const [ocrErrors, setOcrErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setLoading(true)
@@ -48,6 +58,19 @@ function Queue({ refreshKey }: { refreshKey: number }) {
     }
   }
 
+  async function handleRunOcr(id: string) {
+    setOcrBusyId(id)
+    setOcrErrors((prev) => ({ ...prev, [id]: '' }))
+    try {
+      const result = await runOcrExtract(id)
+      setOcrResults((prev) => ({ ...prev, [id]: result }))
+    } catch (err) {
+      setOcrErrors((prev) => ({ ...prev, [id]: err instanceof Error ? err.message : 'OCR failed.' }))
+    } finally {
+      setOcrBusyId(null)
+    }
+  }
+
   return (
     <section className="queue-section">
       <h2>Queue</h2>
@@ -65,26 +88,50 @@ function Queue({ refreshKey }: { refreshKey: number }) {
 
       <ul className="queue-list">
         {items.map((item) => (
-          <li key={item.id} className="queue-row">
-            <img src={item.thumbnail_url} alt={item.original_filename} className="queue-thumb" />
-            <div className="queue-info">
-              <div className="queue-filename">{item.original_filename}</div>
-              <div className="queue-meta">
-                {item.status} · {new Date(item.uploaded_at).toLocaleString()}
+          <li key={item.id} className="queue-item">
+            <div className="queue-row">
+              <img src={item.thumbnail_url} alt={item.original_filename} className="queue-thumb" />
+              <div className="queue-info">
+                <div className="queue-filename">{item.original_filename}</div>
+                <div className="queue-meta">
+                  {item.status} · {new Date(item.uploaded_at).toLocaleString()}
+                </div>
+              </div>
+              <div className="queue-actions">
+                {actionsFor(item.status).map((action) => (
+                  <button
+                    key={action.target}
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => handleAction(item.id, action.target)}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+                <button type="button" disabled={ocrBusyId === item.id} onClick={() => handleRunOcr(item.id)}>
+                  {ocrBusyId === item.id ? 'Running OCR…' : 'Run OCR'}
+                </button>
               </div>
             </div>
-            <div className="queue-actions">
-              {actionsFor(item.status).map((action) => (
-                <button
-                  key={action.target}
-                  type="button"
-                  disabled={busyId === item.id}
-                  onClick={() => handleAction(item.id, action.target)}
-                >
-                  {action.label}
-                </button>
-              ))}
-            </div>
+
+            {ocrErrors[item.id] && <p className="error-text" style={{ marginTop: '0.5rem' }}>{ocrErrors[item.id]}</p>}
+
+            {ocrResults[item.id] && (
+              <div className="ocr-result">
+                {/* Phase 2 test view only — Phase 3 replaces this with an editable review form. */}
+                <div>
+                  <strong>Raw text:</strong> {ocrResults[item.id].raw_text || '(none found)'}
+                </div>
+                <div>
+                  <strong>Title guess:</strong> {ocrResults[item.id].title_guess.value ?? '(none)'} (
+                  {ocrResults[item.id].title_guess.confidence}% confidence)
+                </div>
+                <div>
+                  <strong>Price guess:</strong> {ocrResults[item.id].price_guess.value ?? '(none)'} (
+                  {ocrResults[item.id].price_guess.confidence}% confidence)
+                </div>
+              </div>
+            )}
           </li>
         ))}
       </ul>

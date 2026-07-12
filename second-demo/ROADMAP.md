@@ -9,12 +9,15 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
 
 ## Status
 
-**Phase 0 done. Current phase: 1 — Photo intake & queue (not started).**
+**Phase 0 and Phase 1 done. Current phase: 2 — OCR preflight & extraction (not started).**
 
 Live: https://second-demo-pi.vercel.app/ (frontend) talks to
 https://second-demo-w5t7.onrender.com (backend, Render free tier — spins
 down after ~15 min idle, first load after that can take 30-60s) which
-talks to Neon Postgres. All three confirmed working end to end.
+talks to Neon Postgres and Supabase Storage (private bucket, signed
+URLs). Full upload → thumbnail → queue → status-transition → restore →
+delete flow confirmed working end to end against the live deployment,
+not just locally.
 
 ## Tech stack
 
@@ -30,7 +33,7 @@ talks to Neon Postgres. All three confirmed working end to end.
 - [x] **Phase 0 — Foundations.** FastAPI + SQLAlchemy + Alembic skeleton,
       health endpoint; Vite/React/TS skeleton hitting it; deployed live
       on Render + Neon + Vercel from day one.
-- [ ] **Phase 1 — Photo intake & queue.** Upload (desktop + mobile camera),
+- [x] **Phase 1 — Photo intake & queue.** Upload (desktop + mobile camera),
       server-side validation, controlled storage, thumbnails,
       `intake_items` with statuses, queue UI with filter/select/archive/
       reject/restore/delete.

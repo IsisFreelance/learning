@@ -1,16 +1,28 @@
 import asyncio
+import hashlib
 import uuid
+from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from PIL import Image
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import IntakeItem, IntakeSource, IntakeStatus, is_valid_transition
+from app.models import IntakeItem, IntakeSource, IntakeStatus, OcrResult, is_valid_transition
+from app.ocr import ocr_provider, preflight_status
 from app.rate_limit import RateLimitExceeded, check_and_increment
-from app.schemas import IntakeItemOut, StatusUpdateIn
-from app.storage import create_signed_url, upload_bytes
+from app.schemas import (
+    FieldGuessOut,
+    IntakeItemOut,
+    OcrLineOut,
+    OcrPreflightOut,
+    OcrResultOut,
+    StatusUpdateIn,
+)
+from app.storage import create_signed_url, download_bytes, upload_bytes
 from app.validation import (
     MIME_EXTENSIONS,
     UploadValidationError,
@@ -20,6 +32,14 @@ from app.validation import (
 )
 
 router = APIRouter()
+
+# OCR is CPU-heavy and runs in the same thread pool as every other blocking
+# call in this app (Supabase uploads/downloads) — without a cap here, a
+# client could fire several concurrent large-image OCR requests (each still
+# within the per-IP rate limit below) and stall unrelated requests like
+# uploads or queue listing for everyone else on this single-process
+# container. This limits how many OCR runs happen at once, app-wide.
+_ocr_concurrency = asyncio.Semaphore(2)
 
 # The Supabase SDK's storage client makes blocking HTTP calls under the
 # hood. Calling it directly from an `async def` handler would run that
@@ -81,6 +101,7 @@ async def create_intake_item(
         raise HTTPException(status_code=400, detail=err.message)
 
     thumbnail_bytes = make_thumbnail(content)
+    image = Image.open(BytesIO(content))
 
     item_id = uuid.uuid4()
     storage_path = f"{item_id}/original.{MIME_EXTENSIONS[declared_mime_type]}"
@@ -100,6 +121,9 @@ async def create_intake_item(
         storage_path=storage_path,
         thumbnail_path=thumbnail_path,
         source=source,
+        image_hash=hashlib.sha256(content).hexdigest(),
+        image_width=image.width,
+        image_height=image.height,
     )
     db.add(item)
     db.commit()
@@ -158,3 +182,77 @@ async def update_intake_item_status(
     db.commit()
     db.refresh(item)
     return await _to_out(item)
+
+
+def _ocr_result_to_out(record: OcrResult) -> OcrResultOut:
+    return OcrResultOut(
+        raw_text=record.raw_text,
+        lines=[OcrLineOut(**line) for line in record.lines],
+        title_guess=FieldGuessOut(value=record.title_guess, confidence=record.title_confidence, source="tesseract"),
+        price_guess=FieldGuessOut(value=record.price_guess, confidence=record.price_confidence, source="tesseract"),
+    )
+
+
+@router.post("/intake-items/{item_id}/ocr/preflight", response_model=OcrPreflightOut)
+async def ocr_preflight(request: Request, item_id: uuid.UUID, db: Session = Depends(get_db)):
+    try:
+        check_and_increment(db, f"ocr-preflight:{_client_ip(request)}", limit=60)
+    except RateLimitExceeded:
+        raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
+
+    item = db.get(IntakeItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    is_cached = item.image_hash is not None and db.get(OcrResult, item.image_hash) is not None
+    status, reason = preflight_status(is_cached, item.image_width, item.image_height)
+    return OcrPreflightOut(status=status, reason=reason)
+
+
+@router.post("/intake-items/{item_id}/ocr/extract", response_model=OcrResultOut)
+async def ocr_extract(request: Request, item_id: uuid.UUID, db: Session = Depends(get_db)):
+    try:
+        # OCR is CPU-heavy — a tighter limit than the other endpoints.
+        check_and_increment(db, f"ocr:{_client_ip(request)}", limit=10)
+    except RateLimitExceeded:
+        raise HTTPException(status_code=429, detail="Too many OCR requests — please wait a few minutes and try again.")
+
+    item = db.get(IntakeItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    content: bytes | None = None
+    if item.image_hash is None:
+        content = await run_in_threadpool(download_bytes, item.storage_path)
+        item.image_hash = hashlib.sha256(content).hexdigest()
+        db.commit()
+
+    cached = db.get(OcrResult, item.image_hash)
+    if cached is not None:
+        return _ocr_result_to_out(cached)
+
+    if content is None:
+        content = await run_in_threadpool(download_bytes, item.storage_path)
+
+    async with _ocr_concurrency:
+        result = await run_in_threadpool(ocr_provider.extract, content)
+
+    record = OcrResult(
+        image_hash=item.image_hash,
+        raw_text=result.raw_text,
+        lines=[{"text": line.text, "confidence": line.confidence} for line in result.lines],
+        title_guess=result.title_guess.value,
+        title_confidence=result.title_guess.confidence,
+        price_guess=result.price_guess.value,
+        price_confidence=result.price_guess.confidence,
+    )
+    try:
+        db.add(record)
+        db.commit()
+    except IntegrityError:
+        # Another request extracted the same image (same hash) first —
+        # not a real error, just use what it already saved.
+        db.rollback()
+        record = db.get(OcrResult, item.image_hash)
+
+    return _ocr_result_to_out(record)

@@ -2,8 +2,8 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
-from sqlalchemy.dialects.postgresql import ENUM, UUID
+from sqlalchemy import DateTime, Float, Integer, String, func
+from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -65,6 +65,14 @@ class IntakeItem(Base):
     source: Mapped[IntakeSource] = mapped_column(intake_source_enum, nullable=False)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+    # Nullable because items uploaded before Phase 2 don't have these yet —
+    # backfilled lazily the first time OCR is requested on an older item.
+    # SHA-256 of the original file's bytes; used as the ocr_results cache
+    # key so re-uploading the exact same photo never re-runs OCR.
+    image_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+    image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
 
 class RateLimitCounter(Base):
     __tablename__ = "rate_limit_counters"
@@ -72,3 +80,18 @@ class RateLimitCounter(Base):
     key: Mapped[str] = mapped_column(String, primary_key=True)
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class OcrResult(Base):
+    __tablename__ = "ocr_results"
+
+    # Keyed by image content, not by intake item — if the same photo is
+    # ever uploaded twice, OCR only ever runs once.
+    image_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    raw_text: Mapped[str] = mapped_column(String, nullable=False)
+    lines: Mapped[list] = mapped_column(JSONB, nullable=False)
+    title_guess: Mapped[str | None] = mapped_column(String, nullable=True)
+    title_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    price_guess: Mapped[str | None] = mapped_column(String, nullable=True)
+    price_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

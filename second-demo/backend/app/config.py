@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     supabase_service_role_key: str
     supabase_storage_bucket: str = "intake-photos"
 
+    # Only needed for local Windows dev, where Tesseract isn't on PATH by
+    # default — the Docker image used in production puts it on PATH, so
+    # this stays unset there and pytesseract finds it on its own.
+    tesseract_cmd: str | None = None
+
     @field_validator("database_url")
     @classmethod
     def use_psycopg_driver(cls, v: str) -> str:
