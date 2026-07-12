@@ -20,5 +20,11 @@ COPY --chown=appuser:appuser . .
 
 USER appuser
 
+# Applies any pending Alembic migrations before starting the server, so a
+# new table/column added in the code is never live without also being live
+# in the database -- this bit us for real once already (Phase 3 shipped
+# with confirmed_products migrated locally but never applied to Neon,
+# which 500'd the live confirm endpoint until this was added). Safe to run
+# on every startup: alembic upgrade head is a no-op when already current.
 # Render sets $PORT at runtime; sh -c is needed so the shell expands it.
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
