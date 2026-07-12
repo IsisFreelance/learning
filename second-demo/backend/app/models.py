@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,16 +23,18 @@ class IntakeSource(str, enum.Enum):
     UPLOAD = "upload"
 
 
-# Which status changes are allowed, and from where. OPENED/CONFIRMED have no
-# transitions yet because nothing sets them until Phase 3's review screen —
-# Phase 1 only ever moves NEW -> {ARCHIVED, REJECTED, DELETED}, and restores
-# any of those three straight back to NEW.
+# Which status changes are allowed, and from where. NEW -> OPENED happens
+# when the review screen loads; OPENED -> CONFIRMED only via the /confirm
+# endpoint (Phase 3), which is what actually enforces "must be opened before
+# it can be confirmed" — is_valid_transition() is the check that guarantees
+# that ordering. OPENED -> NEW is "cancel review, back to the queue."
+# CONFIRMED stays terminal: no path back out of it in this phase.
 ALLOWED_STATUS_TRANSITIONS: dict[IntakeStatus, set[IntakeStatus]] = {
-    IntakeStatus.NEW: {IntakeStatus.ARCHIVED, IntakeStatus.REJECTED, IntakeStatus.DELETED},
+    IntakeStatus.NEW: {IntakeStatus.ARCHIVED, IntakeStatus.REJECTED, IntakeStatus.DELETED, IntakeStatus.OPENED},
     IntakeStatus.ARCHIVED: {IntakeStatus.NEW},
     IntakeStatus.REJECTED: {IntakeStatus.NEW},
     IntakeStatus.DELETED: {IntakeStatus.NEW},
-    IntakeStatus.OPENED: set(),
+    IntakeStatus.OPENED: {IntakeStatus.NEW, IntakeStatus.CONFIRMED},
     IntakeStatus.CONFIRMED: set(),
 }
 
@@ -95,3 +97,36 @@ class OcrResult(Base):
     price_guess: Mapped[str | None] = mapped_column(String, nullable=True)
     price_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ConfirmedProduct(Base):
+    __tablename__ = "confirmed_products"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # unique -> one confirmation per intake item; CONFIRMED is terminal so
+    # there's no path that would ever need a second row for the same item.
+    intake_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("intake_items.id"), nullable=False, unique=True
+    )
+
+    product_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    product_name_source: Mapped[str] = mapped_column(String, nullable=False)
+    product_name_override_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Plain text, not numeric -- OCR hands back strings like "$24.99" and
+    # real currency parsing (thousands separators, other currencies) is out
+    # of scope for this phase; a known simplification, not an oversight.
+    price: Mapped[str | None] = mapped_column(String, nullable=True)
+    price_source: Mapped[str] = mapped_column(String, nullable=False)
+    price_override_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Snapshot of what OCR actually saw at confirmation time, for audit —
+    # lets you compare "what OCR guessed" against "what the human confirmed"
+    # later without needing ocr_results to still have the matching row.
+    ocr_raw_text: Mapped[str | None] = mapped_column(String, nullable=True)
+    ocr_title_guess: Mapped[str | None] = mapped_column(String, nullable=True)
+    ocr_title_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ocr_price_guess: Mapped[str | None] = mapped_column(String, nullable=True)
+    ocr_price_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

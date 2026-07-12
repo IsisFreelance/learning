@@ -1,14 +1,7 @@
 import { useEffect, useState } from 'react'
-import {
-  listIntakeItems,
-  runOcrExtract,
-  updateIntakeItemStatus,
-  type IntakeItem,
-  type IntakeStatus,
-  type OcrExtractResult,
-} from '../api'
+import { listIntakeItems, updateIntakeItemStatus, type IntakeItem, type IntakeStatus } from '../api'
 
-const FILTERS: Array<IntakeStatus | 'all'> = ['all', 'new', 'archived', 'rejected', 'deleted']
+const FILTERS: Array<IntakeStatus | 'all'> = ['all', 'new', 'opened', 'archived', 'rejected', 'deleted']
 
 function actionsFor(status: IntakeStatus): Array<{ label: string; target: IntakeStatus }> {
   if (status === 'new') {
@@ -18,21 +11,21 @@ function actionsFor(status: IntakeStatus): Array<{ label: string; target: Intake
       { label: 'Delete', target: 'deleted' },
     ]
   }
-  if (status === 'archived' || status === 'rejected' || status === 'deleted') {
+  if (status === 'archived' || status === 'rejected' || status === 'deleted' || status === 'opened') {
+    // "opened" here covers an item left mid-review (e.g. the browser was
+    // closed before Confirm/Cancel) — restoring it to "new" is the way
+    // back in, same as the other non-terminal statuses.
     return [{ label: 'Restore', target: 'new' }]
   }
   return []
 }
 
-function Queue({ refreshKey }: { refreshKey: number }) {
+function Queue({ refreshKey, onReview }: { refreshKey: number; onReview: (item: IntakeItem) => void }) {
   const [items, setItems] = useState<IntakeItem[]>([])
   const [filter, setFilter] = useState<IntakeStatus | 'all'>('new')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [ocrBusyId, setOcrBusyId] = useState<string | null>(null)
-  const [ocrResults, setOcrResults] = useState<Record<string, OcrExtractResult>>({})
-  const [ocrErrors, setOcrErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     setLoading(true)
@@ -55,19 +48,6 @@ function Queue({ refreshKey }: { refreshKey: number }) {
       setError(err instanceof Error ? err.message : 'Action failed.')
     } finally {
       setBusyId(null)
-    }
-  }
-
-  async function handleRunOcr(id: string) {
-    setOcrBusyId(id)
-    setOcrErrors((prev) => ({ ...prev, [id]: '' }))
-    try {
-      const result = await runOcrExtract(id)
-      setOcrResults((prev) => ({ ...prev, [id]: result }))
-    } catch (err) {
-      setOcrErrors((prev) => ({ ...prev, [id]: err instanceof Error ? err.message : 'OCR failed.' }))
-    } finally {
-      setOcrBusyId(null)
     }
   }
 
@@ -98,6 +78,11 @@ function Queue({ refreshKey }: { refreshKey: number }) {
                 </div>
               </div>
               <div className="queue-actions">
+                {item.status === 'new' && (
+                  <button type="button" onClick={() => onReview(item)}>
+                    Review
+                  </button>
+                )}
                 {actionsFor(item.status).map((action) => (
                   <button
                     key={action.target}
@@ -108,30 +93,8 @@ function Queue({ refreshKey }: { refreshKey: number }) {
                     {action.label}
                   </button>
                 ))}
-                <button type="button" disabled={ocrBusyId === item.id} onClick={() => handleRunOcr(item.id)}>
-                  {ocrBusyId === item.id ? 'Running OCR…' : 'Run OCR'}
-                </button>
               </div>
             </div>
-
-            {ocrErrors[item.id] && <p className="error-text" style={{ marginTop: '0.5rem' }}>{ocrErrors[item.id]}</p>}
-
-            {ocrResults[item.id] && (
-              <div className="ocr-result">
-                {/* Phase 2 test view only — Phase 3 replaces this with an editable review form. */}
-                <div>
-                  <strong>Raw text:</strong> {ocrResults[item.id].raw_text || '(none found)'}
-                </div>
-                <div>
-                  <strong>Title guess:</strong> {ocrResults[item.id].title_guess.value ?? '(none)'} (
-                  {ocrResults[item.id].title_guess.confidence}% confidence)
-                </div>
-                <div>
-                  <strong>Price guess:</strong> {ocrResults[item.id].price_guess.value ?? '(none)'} (
-                  {ocrResults[item.id].price_guess.confidence}% confidence)
-                </div>
-              </div>
-            )}
           </li>
         ))}
       </ul>

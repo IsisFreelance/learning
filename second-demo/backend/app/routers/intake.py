@@ -10,11 +10,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.confirm import FieldValidationError, resolve_field
 from app.database import get_db
-from app.models import IntakeItem, IntakeSource, IntakeStatus, OcrResult, is_valid_transition
+from app.models import ConfirmedProduct, IntakeItem, IntakeSource, IntakeStatus, OcrResult, is_valid_transition
 from app.ocr import ocr_provider, preflight_status
 from app.rate_limit import RateLimitExceeded, check_and_increment
 from app.schemas import (
+    ConfirmedProductOut,
+    ConfirmIn,
     FieldGuessOut,
     IntakeItemOut,
     OcrLineOut,
@@ -256,3 +259,68 @@ async def ocr_extract(request: Request, item_id: uuid.UUID, db: Session = Depend
         record = db.get(OcrResult, item.image_hash)
 
     return _ocr_result_to_out(record)
+
+
+@router.post("/intake-items/{item_id}/confirm", response_model=ConfirmedProductOut)
+async def confirm_intake_item(request: Request, item_id: uuid.UUID, body: ConfirmIn, db: Session = Depends(get_db)):
+    try:
+        check_and_increment(db, f"confirm:{_client_ip(request)}")
+    except RateLimitExceeded:
+        raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
+
+    item = db.get(IntakeItem, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Not found.")
+
+    if not is_valid_transition(item.status, IntakeStatus.CONFIRMED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot confirm an item with status '{item.status.value}' — open it for review first.",
+        )
+
+    cached = db.get(OcrResult, item.image_hash) if item.image_hash else None
+
+    try:
+        name = resolve_field(body.product_name, body.product_name_override_reason, cached.title_guess if cached else None, "product name")
+        price = resolve_field(body.price, body.price_override_reason, cached.price_guess if cached else None, "price")
+    except FieldValidationError as err:
+        raise HTTPException(status_code=400, detail=err.message)
+
+    confirmed = ConfirmedProduct(
+        intake_item_id=item.id,
+        product_name=name.value,
+        product_name_source=name.source,
+        product_name_override_reason=name.override_reason,
+        price=price.value,
+        price_source=price.source,
+        price_override_reason=price.override_reason,
+        ocr_raw_text=cached.raw_text if cached else None,
+        ocr_title_guess=cached.title_guess if cached else None,
+        ocr_title_confidence=cached.title_confidence if cached else None,
+        ocr_price_guess=cached.price_guess if cached else None,
+        ocr_price_confidence=cached.price_confidence if cached else None,
+    )
+    db.add(confirmed)
+    item.status = IntakeStatus.CONFIRMED
+    try:
+        db.commit()
+    except IntegrityError:
+        # Another request confirmed this exact item first (confirmed_products
+        # has a unique constraint on intake_item_id) — same race the OCR
+        # cache-write already handles above. Not data corruption, just two
+        # requests racing for one outcome; report it as a clean conflict.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This item was already confirmed.")
+    db.refresh(confirmed)
+
+    return ConfirmedProductOut(
+        id=confirmed.id,
+        intake_item_id=confirmed.intake_item_id,
+        product_name=confirmed.product_name,
+        product_name_source=confirmed.product_name_source,
+        product_name_override_reason=confirmed.product_name_override_reason,
+        price=confirmed.price,
+        price_source=confirmed.price_source,
+        price_override_reason=confirmed.price_override_reason,
+        confirmed_at=confirmed.confirmed_at,
+    )

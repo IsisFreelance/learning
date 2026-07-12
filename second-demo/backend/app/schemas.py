@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models import IntakeSource, IntakeStatus
 
@@ -43,3 +43,22 @@ class OcrResultOut(BaseModel):
     lines: list[OcrLineOut]
     title_guess: FieldGuessOut
     price_guess: FieldGuessOut
+
+
+class ConfirmIn(BaseModel):
+    product_name: str | None = Field(default=None, max_length=300)
+    product_name_override_reason: str | None = Field(default=None, max_length=500)
+    price: str | None = Field(default=None, max_length=50)
+    price_override_reason: str | None = Field(default=None, max_length=500)
+
+
+class ConfirmedProductOut(BaseModel):
+    id: UUID
+    intake_item_id: UUID
+    product_name: str | None
+    product_name_source: str
+    product_name_override_reason: str | None
+    price: str | None
+    price_source: str
+    price_override_reason: str | None
+    confirmed_at: datetime

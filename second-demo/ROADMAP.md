@@ -9,7 +9,8 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
 
 ## Status
 
-**Phase 0, Phase 1, and Phase 2 done. Current phase: 3 — manual review & confirmation (not started).**
+**Phase 0, Phase 1, Phase 2, and Phase 3 done. Current phase: 4 — approved
+products table (not started).**
 
 Live: https://second-demo-pi.vercel.app/ (frontend) talks to
 https://docker-demo-obpu.onrender.com (backend — Docker runtime on
@@ -17,9 +18,10 @@ Render's free tier, replacing the original native-Python service so
 Tesseract, a system-level program, could be installed; still spins down
 after ~15 min idle, first load after that can take 30-60s) which talks
 to Neon Postgres and Supabase Storage (private bucket, signed URLs).
-Full upload → thumbnail → queue → status-transition → restore → delete
-→ OCR extract flow confirmed working end to end against the live
-deployment, not just locally.
+Full upload → thumbnail → queue → review → confirm (with source tags and
+the override-reason escape hatch) → `confirmed_products` flow confirmed
+working end to end, not just locally — this is the first fully demoable
+end-to-end slice of the app.
 
 ## Tech stack
 
@@ -45,7 +47,7 @@ deployment, not just locally.
 - [x] **Phase 2 — OCR preflight & extraction (Tesseract).** Hash-based
       cache, preflight endpoint (cached/available/blocked + reason),
       Tesseract extraction with per-field confidence/source.
-- [ ] **Phase 3 — Manual review & confirmation.** Review UI (photo +
+- [x] **Phase 3 — Manual review & confirmation.** Review UI (photo +
       editable fields, source tags), required-field validation with
       override-reason escape hatch, `confirmed_products` with full audit
       data. *First fully demoable end-to-end slice.*
@@ -79,6 +81,9 @@ deployment, not just locally.
 - **Windows can't stop/start/reload the `postgresql-x64-17` service directly** (PowerShell's `Stop-Service`/`pg_ctl reload` both fail with permission errors in this environment) — only winget's own install/uninstall/reinstall flow has enough elevation to touch it. Keep this in mind for any future Postgres config change that needs a restart.
 - **OCR extraction is capped to 2 concurrent runs app-wide** (`_ocr_concurrency` in `app/routers/intake.py`), found during Phase 2's security review — Tesseract is CPU-heavy and shares the same worker thread pool as every other blocking call (Supabase uploads/downloads), so without a cap a burst of OCR requests could stall unrelated requests for everyone on this single-process free-tier container. Revisit if Phase 2's usage ever outgrows a single small container (a real job queue, or a dedicated OCR worker, would be the proper fix).
 - **When migrating a Render service (e.g. native Python → Docker for Phase 2), env vars must be copied value-by-value, not assumed** — two real deploy failures happened this way: `DATABASE_URL` was pasted as a near-miss instead of the exact Neon string, and `FRONTEND_ORIGIN` didn't exactly match the Vercel URL (CORS is a strict string match, no trailing slash). Also: local-only settings like `TESSERACT_CMD` (only needed on Windows, where Tesseract isn't on PATH) should never be copied to a deployed environment — they override behavior that's supposed to differ between local and production. Double-check each variable individually after any service migration rather than trusting a bulk copy.
+- **`confirmed_products.price` is stored as plain text, not a numeric type** — OCR hands back strings like `"$24.99"` and real currency parsing (thousands separators, other currencies, stray characters) is out of scope for Phase 3. A known, deliberate simplification, not an oversight — revisit if a later phase needs to actually do math on prices (export totals, sorting by price, etc.).
+- **Lesson from Phase 3's review screen**: React's StrictMode intentionally double-invokes effects in development, which surfaced a real bug — the "mark as opened" status call ran twice, and the second call failed (`opened` → `opened` isn't a valid transition) and incorrectly showed as a blocking error. Fixed by making that specific call best-effort/non-blocking, since only the `/confirm` endpoint actually requires the item to be `opened` — this is also just generally more correct (a real double-open, e.g. two tabs on the same item, shouldn't break the screen either). Worth remembering for any future effect that calls a non-idempotent endpoint on mount.
+- **The JSON-body size limit (`main.py`, added in Phase 3's security review) checks the `Content-Length` header, which a client could omit while streaming an unbounded body via chunked transfer-encoding** — every normal HTTP client (browsers, `fetch`, `curl`, `requests`) sends `Content-Length` for a JSON POST, so this closes the realistic case, but a determined attacker crafting a chunked request could still bypass the header check. A fully robust fix would cap bytes actually read off the stream (the same pattern `validation.py`'s `read_upload_within_limit` already uses for file uploads); accepted for now given the low realistic risk, revisit if this app ever handles anything more sensitive than a portfolio demo.
 
 ## How to resume this project in a new conversation
 

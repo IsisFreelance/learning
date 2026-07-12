@@ -67,3 +67,43 @@ export async function runOcrExtract(id: string): Promise<OcrExtractResult> {
   if (!res.ok) throw new Error(await readErrorMessage(res, `OCR failed (HTTP ${res.status}).`))
   return res.json()
 }
+
+export interface OcrPreflightResult {
+  status: 'cached' | 'available' | 'blocked'
+  reason: string | null
+}
+
+export async function runOcrPreflight(id: string): Promise<OcrPreflightResult> {
+  const res = await fetch(`${API_BASE_URL}/intake-items/${id}/ocr/preflight`, { method: 'POST' })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `OCR preflight failed (HTTP ${res.status}).`))
+  return res.json()
+}
+
+export interface ConfirmIn {
+  product_name: string | null
+  product_name_override_reason: string | null
+  price: string | null
+  price_override_reason: string | null
+}
+
+export interface ConfirmedProduct {
+  id: string
+  intake_item_id: string
+  product_name: string | null
+  product_name_source: string
+  product_name_override_reason: string | null
+  price: string | null
+  price_source: string
+  price_override_reason: string | null
+  confirmed_at: string
+}
+
+export async function confirmIntakeItem(id: string, payload: ConfirmIn): Promise<ConfirmedProduct> {
+  const res = await fetch(`${API_BASE_URL}/intake-items/${id}/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Confirm failed (HTTP ${res.status}).`))
+  return res.json()
+}
