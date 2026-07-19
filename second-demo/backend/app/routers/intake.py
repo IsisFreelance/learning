@@ -10,11 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.auth import require_admin
 from app.confirm import FieldValidationError, resolve_field
 from app.database import get_db
 from app.models import ConfirmedProduct, IntakeItem, IntakeSource, IntakeStatus, OcrResult, is_valid_transition
 from app.ocr import ocr_provider, preflight_status
-from app.rate_limit import RateLimitExceeded, check_and_increment
+from app.rate_limit import RateLimitExceeded, check_and_increment, client_ip
 from app.schemas import (
     ConfirmedProductOut,
     ConfirmIn,
@@ -34,7 +35,7 @@ from app.validation import (
     validate_upload,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_admin)])
 
 # OCR is CPU-heavy and runs in the same thread pool as every other blocking
 # call in this app (Supabase uploads/downloads) — without a cap here, a
@@ -50,19 +51,6 @@ _ocr_concurrency = asyncio.Semaphore(2)
 # request (uploads, lists, status changes) for as long as the call takes —
 # run_in_threadpool pushes it onto a worker thread instead, same mechanism
 # Starlette already uses automatically for plain `def` route handlers.
-
-
-def _client_ip(request: Request) -> str:
-    # Render sits in front of the app as a single trusted proxy hop, which
-    # *appends* the real peer IP to the end of x-forwarded-for — the first
-    # entry is whatever the client itself sent and is fully attacker
-    # controlled, so only the last entry can be trusted here. This still
-    # assumes the app is never reachable except through that proxy; see
-    # the "Known issues" note in ROADMAP.md.
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[-1].strip()
-    return request.client.host if request.client else "unknown"
 
 
 async def _to_out(item: IntakeItem) -> IntakeItemOut:
@@ -91,7 +79,7 @@ async def create_intake_item(
     db: Session = Depends(get_db),
 ):
     try:
-        check_and_increment(db, f"upload:{_client_ip(request)}")
+        check_and_increment(db, f"upload:{client_ip(request)}")
     except RateLimitExceeded:
         raise HTTPException(status_code=429, detail="Too many uploads — please wait a few minutes and try again.")
 
@@ -148,7 +136,7 @@ async def list_intake_items(
         # each item still costs two real Supabase API calls to sign, so an
         # unthrottled scripted loop here is a genuine way to hammer both
         # this service and Supabase's own API.
-        check_and_increment(db, f"list:{_client_ip(request)}", limit=60)
+        check_and_increment(db, f"list:{client_ip(request)}", limit=60)
     except RateLimitExceeded:
         raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
 
@@ -167,7 +155,7 @@ async def update_intake_item_status(
     db: Session = Depends(get_db),
 ):
     try:
-        check_and_increment(db, f"status-update:{_client_ip(request)}")
+        check_and_increment(db, f"status-update:{client_ip(request)}")
     except RateLimitExceeded:
         raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
 
@@ -199,7 +187,7 @@ def _ocr_result_to_out(record: OcrResult) -> OcrResultOut:
 @router.post("/intake-items/{item_id}/ocr/preflight", response_model=OcrPreflightOut)
 async def ocr_preflight(request: Request, item_id: uuid.UUID, db: Session = Depends(get_db)):
     try:
-        check_and_increment(db, f"ocr-preflight:{_client_ip(request)}", limit=60)
+        check_and_increment(db, f"ocr-preflight:{client_ip(request)}", limit=60)
     except RateLimitExceeded:
         raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
 
@@ -216,7 +204,7 @@ async def ocr_preflight(request: Request, item_id: uuid.UUID, db: Session = Depe
 async def ocr_extract(request: Request, item_id: uuid.UUID, db: Session = Depends(get_db)):
     try:
         # OCR is CPU-heavy — a tighter limit than the other endpoints.
-        check_and_increment(db, f"ocr:{_client_ip(request)}", limit=10)
+        check_and_increment(db, f"ocr:{client_ip(request)}", limit=10)
     except RateLimitExceeded:
         raise HTTPException(status_code=429, detail="Too many OCR requests — please wait a few minutes and try again.")
 
@@ -264,7 +252,7 @@ async def ocr_extract(request: Request, item_id: uuid.UUID, db: Session = Depend
 @router.post("/intake-items/{item_id}/confirm", response_model=ConfirmedProductOut)
 async def confirm_intake_item(request: Request, item_id: uuid.UUID, body: ConfirmIn, db: Session = Depends(get_db)):
     try:
-        check_and_increment(db, f"confirm:{_client_ip(request)}")
+        check_and_increment(db, f"confirm:{client_ip(request)}")
     except RateLimitExceeded:
         raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
 

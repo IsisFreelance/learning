@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,19 @@ MAX_REQUESTS_PER_WINDOW = 15
 
 class RateLimitExceeded(Exception):
     pass
+
+
+def client_ip(request: Request) -> str:
+    # Render sits in front of the app as a single trusted proxy hop, which
+    # *appends* the real peer IP to the end of x-forwarded-for -- the first
+    # entry is whatever the client itself sent and is fully attacker
+    # controlled, so only the last entry can be trusted here. This still
+    # assumes the app is never reachable except through that proxy; see
+    # the "Known issues" note in ROADMAP.md.
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def check_and_increment(db: Session, key: str, limit: int = MAX_REQUESTS_PER_WINDOW) -> None:

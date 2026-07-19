@@ -6,3 +6,5 @@ import os
 os.environ.setdefault("DATABASE_URL", "postgresql+psycopg://test:test@localhost:5432/test")
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+os.environ.setdefault("ADMIN_PASSWORD", "test-admin-password")
+os.environ.setdefault("SESSION_SECRET", "test-session-secret")

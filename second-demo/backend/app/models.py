@@ -130,3 +130,6 @@ class ConfirmedProduct(Base):
     ocr_price_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # Set only when a Phase 4 edit changes product_name/price after
+    # confirmation -- null means "never edited since confirming."
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -9,8 +9,7 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
 
 ## Status
 
-**Phase 0, Phase 1, Phase 2, and Phase 3 done. Current phase: 4 — approved
-products table (not started).**
+**Phase 0 through Phase 4 done. Next up: Phase 5 (stretch).**
 
 Live: https://second-demo-pi.vercel.app/ (frontend) talks to
 https://docker-demo-obpu.onrender.com (backend — Docker runtime on
@@ -19,9 +18,10 @@ Tesseract, a system-level program, could be installed; still spins down
 after ~15 min idle, first load after that can take 30-60s) which talks
 to Neon Postgres and Supabase Storage (private bucket, signed URLs).
 Full upload → thumbnail → queue → review → confirm (with source tags and
-the override-reason escape hatch) → `confirmed_products` flow confirmed
-working end to end, not just locally — this is the first fully demoable
-end-to-end slice of the app.
+the override-reason escape hatch) → `confirmed_products` → browse/search/
+filter/sort/edit/delete/export flow confirmed working end to end, not
+just locally. The entire app now sits behind a single hardcoded admin
+login (Phase 4) — no more open, unauthenticated access.
 
 ## Tech stack
 
@@ -51,8 +51,13 @@ end-to-end slice of the app.
       editable fields, source tags), required-field validation with
       override-reason escape hatch, `confirmed_products` with full audit
       data. *First fully demoable end-to-end slice.*
-- [ ] **Phase 4 — Approved products table.** Search/filter/sort/export
-      (XLSX/CSV), edit/delete, thumbnail + full preview, admin login.
+- [x] **Phase 4 — Approved products table.** Search/filter/sort/export
+      (XLSX/CSV), edit/delete, thumbnail + full preview, admin login —
+      a single hardcoded password (`ADMIN_PASSWORD`), a signed session
+      token (`Authorization: Bearer`, not a cookie — the frontend/backend
+      live on different domains, and a bearer token sidesteps cross-site
+      cookie flags entirely) now gates the *whole app*, not just this
+      screen.
 - [ ] **Phase 5 — Grouping & normalization** *(stretch)*. Deterministic
       same-product/variant detection, canonical naming, grouped preview
       with conflicts/warnings/ready-or-blocked.
@@ -67,10 +72,9 @@ end-to-end slice of the app.
   IP**, which only holds if Render (or whatever's in front of the app) is
   truly the sole path in — if the origin were ever reachable directly, an
   attacker could forge the trusted-looking entry and bypass rate limiting
-  entirely. Accepted for now since there's no auth yet either and Render's
-  standard web-service routing doesn't expose the origin directly; revisit
-  properly once Phase 4 adds real authentication and this stops being the
-  only abuse control in the app.
+  entirely. Lower-stakes now that Phase 4 added real login on top, but
+  still worth tightening if this app ever sits behind a different proxy
+  setup.
 - **Lesson for future phases**: any blocking/synchronous call (an external
   HTTP SDK, `Image.open()`, etc.) inside an `async def` route handler runs
   *on the event loop itself* and freezes every other in-flight request —
@@ -84,6 +88,10 @@ end-to-end slice of the app.
 - **`confirmed_products.price` is stored as plain text, not a numeric type** — OCR hands back strings like `"$24.99"` and real currency parsing (thousands separators, other currencies, stray characters) is out of scope for Phase 3. A known, deliberate simplification, not an oversight — revisit if a later phase needs to actually do math on prices (export totals, sorting by price, etc.).
 - **Lesson from Phase 3's review screen**: React's StrictMode intentionally double-invokes effects in development, which surfaced a real bug — the "mark as opened" status call ran twice, and the second call failed (`opened` → `opened` isn't a valid transition) and incorrectly showed as a blocking error. Fixed by making that specific call best-effort/non-blocking, since only the `/confirm` endpoint actually requires the item to be `opened` — this is also just generally more correct (a real double-open, e.g. two tabs on the same item, shouldn't break the screen either). Worth remembering for any future effect that calls a non-idempotent endpoint on mount.
 - **The JSON-body size limit (`main.py`, added in Phase 3's security review) checks the `Content-Length` header, which a client could omit while streaming an unbounded body via chunked transfer-encoding** — every normal HTTP client (browsers, `fetch`, `curl`, `requests`) sends `Content-Length` for a JSON POST, so this closes the realistic case, but a determined attacker crafting a chunked request could still bypass the header check. A fully robust fix would cap bytes actually read off the stream (the same pattern `validation.py`'s `read_upload_within_limit` already uses for file uploads); accepted for now given the low realistic risk, revisit if this app ever handles anything more sensitive than a portfolio demo.
+- **CSV/XLSX export is a formula-injection vector (CWE-1236), found and fixed in Phase 4's security review** — `product_name`/`price` can come straight from OCR reading a photographed label, and a value starting with `=`/`+`/`-`/`@` opens as a live formula (e.g. `=HYPERLINK(...)`) in Excel/Sheets instead of plain text, which could exfiltrate data silently. `app/routers/products.py`'s `_escape_for_spreadsheet` now prefixes any such value with a leading `'` before writing it to either export format. Worth remembering for any future export/report feature that writes user- or OCR-controlled text into a spreadsheet.
+- **A Starlette quirk: registering an exception handler for the bare `Exception` class (or status 500) does *not* restore CORS headers on an unhandled error** — Starlette special-cases that registration onto `ServerErrorMiddleware`, which sits *outside* `CORSMiddleware` in the middleware stack, so the response it returns still skips the CORS layer entirely and the browser reports a misleading "CORS blocked" error instead of the real 500. A handler registered for a *specific* exception type (e.g. this app's new `StorageError` in `app/storage.py`/`app/main.py`) doesn't get that special-casing and works correctly. Worth remembering for any future "catch-all" error handling — target specific exception types, not the bare `Exception` class, if CORS-correct error responses matter.
+- **Supabase's signed-URL API occasionally drops the connection mid-request** (`httpx.RemoteProtocolError: Server disconnected`) when several are requested at once — e.g. loading a page of 20 items signs 40 URLs (image + thumbnail each) concurrently via `asyncio.gather`. `app/storage.py`'s `create_signed_url` now retries once before giving up. Revisit if this app ever needs to load noticeably more items per page than it does today.
+- **On this Windows dev machine, `uvicorn --reload` sometimes announces "Reloading..." for a changed file but silently keeps serving the old code** (confirmed via mismatched line numbers in a traceback after a reload event) — a WatchFiles quirk, not a code bug. When verifying a fix actually took effect, prefer a full manual stop/restart of the dev server over trusting `--reload`.
 
 ## How to resume this project in a new conversation
 

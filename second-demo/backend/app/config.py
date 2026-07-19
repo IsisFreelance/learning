@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     supabase_service_role_key: str
     supabase_storage_bucket: str = "intake-photos"
 
+    # The single hardcoded admin credential (Phase 4) and the key used to
+    # sign session tokens issued at login. Both real secrets — backend-only,
+    # never a VITE_-prefixed/frontend-visible value.
+    admin_password: str
+    session_secret: str
+
     # Only needed for local Windows dev, where Tesseract isn't on PATH by
     # default — the Docker image used in production puts it on PATH, so
     # this stays unset there and pytesseract finds it on its own.
