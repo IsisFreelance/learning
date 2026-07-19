@@ -249,3 +249,28 @@ export async function exportConfirmedProducts(
   link.click()
   URL.revokeObjectURL(objectUrl)
 }
+
+export interface ProductGroup {
+  normalized_name: string
+  status: 'ready' | 'blocked'
+  canonical_name: string | null
+  members: ConfirmedProductListItem[]
+}
+
+export interface PossibleDuplicate {
+  similarity: number
+  group_a: ConfirmedProductListItem[]
+  group_b: ConfirmedProductListItem[]
+}
+
+export interface ProductGrouping {
+  ready_groups: ProductGroup[]
+  blocked_groups: ProductGroup[]
+  possible_duplicates: PossibleDuplicate[]
+}
+
+export async function getConfirmedProductGroups(): Promise<ProductGrouping> {
+  const res = await fetch(`${API_BASE_URL}/confirmed-products/groups`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to load duplicate review (HTTP ${res.status}).`))
+  return res.json()
+}

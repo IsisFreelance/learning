@@ -4,9 +4,10 @@ import UploadSection from './components/UploadSection'
 import Queue from './components/Queue'
 import ReviewScreen from './components/ReviewScreen'
 import ProductsTable from './components/ProductsTable'
+import GroupingReview from './components/GroupingReview'
 import { adminCheckSession, clearToken, getToken, type IntakeItem } from './api'
 
-type Tab = 'intake' | 'products'
+type Tab = 'intake' | 'products' | 'grouping'
 
 function App() {
   // null = still checking a saved token; true/false = known login state.
@@ -67,6 +68,9 @@ function App() {
         <button type="button" className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}>
           Approved Products
         </button>
+        <button type="button" className={tab === 'grouping' ? 'active' : ''} onClick={() => setTab('grouping')}>
+          Review Duplicates
+        </button>
       </div>
 
       {tab === 'intake' &&
@@ -80,6 +84,7 @@ function App() {
         ))}
 
       {tab === 'products' && <ProductsTable />}
+      {tab === 'grouping' && <GroupingReview />}
     </main>
   )
 }

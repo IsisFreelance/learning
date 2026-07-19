@@ -91,6 +91,25 @@ class ConfirmedProductListItemOut(BaseModel):
     updated_at: datetime | None
 
 
+class ProductGroupOut(BaseModel):
+    normalized_name: str
+    status: str  # "ready" | "blocked"
+    canonical_name: str | None
+    members: list[ConfirmedProductListItemOut]
+
+
+class PossibleDuplicateOut(BaseModel):
+    similarity: float
+    group_a: list[ConfirmedProductListItemOut]
+    group_b: list[ConfirmedProductListItemOut]
+
+
+class ProductGroupingOut(BaseModel):
+    ready_groups: list[ProductGroupOut]
+    blocked_groups: list[ProductGroupOut]
+    possible_duplicates: list[PossibleDuplicateOut]
+
+
 class ConfirmedProductDetailOut(BaseModel):
     id: UUID
     intake_item_id: UUID

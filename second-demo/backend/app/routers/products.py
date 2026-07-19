@@ -15,8 +15,16 @@ from app.auth import require_admin
 from app.confirm import FieldValidationError, resolve_field
 from app.database import get_db
 from app.models import ConfirmedProduct, IntakeItem
+from app.normalization import ProductRecord, classify_group, find_possible_duplicates, group_by_name
 from app.rate_limit import RateLimitExceeded, check_and_increment, client_ip
-from app.schemas import ConfirmedProductDetailOut, ConfirmedProductListItemOut, ConfirmedProductPatchIn
+from app.schemas import (
+    ConfirmedProductDetailOut,
+    ConfirmedProductListItemOut,
+    ConfirmedProductPatchIn,
+    PossibleDuplicateOut,
+    ProductGroupingOut,
+    ProductGroupOut,
+)
 from app.storage import create_signed_url
 
 router = APIRouter(prefix="/confirmed-products", dependencies=[Depends(require_admin)])
@@ -166,6 +174,61 @@ def export_confirmed_products(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": 'attachment; filename="confirmed_products.xlsx"'},
     )
+
+
+@router.get("/groups", response_model=ProductGroupingOut)
+async def get_confirmed_product_groups(request: Request, db: Session = Depends(get_db)):
+    try:
+        # Computing this touches every confirmed product and signs a
+        # thumbnail for each one shown -- a heavier read than a single
+        # paginated list page, so a tighter cap than list/detail.
+        check_and_increment(db, f"products-groups:{client_ip(request)}", limit=20)
+    except RateLimitExceeded:
+        raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
+
+    rows = db.execute(select(ConfirmedProduct, IntakeItem).join(IntakeItem, ConfirmedProduct.intake_item_id == IntakeItem.id)).all()
+    row_by_id = {product.id: (product, item) for product, item in rows}
+    records = [
+        ProductRecord(
+            id=product.id,
+            product_name=product.product_name,
+            price=product.price,
+            confirmed_at=product.confirmed_at,
+            updated_at=product.updated_at,
+        )
+        for product, _item in rows
+    ]
+
+    normalized_groups = group_by_name(records)
+
+    async def _members_out(members: list[ProductRecord]) -> list[ConfirmedProductListItemOut]:
+        return await asyncio.gather(*(_to_list_item(*row_by_id[member.id]) for member in members))
+
+    ready_groups: list[ProductGroupOut] = []
+    blocked_groups: list[ProductGroupOut] = []
+    for normalized_name, members in normalized_groups.items():
+        if len(members) < 2:
+            continue  # nothing to compare a lone product against
+        result = classify_group(normalized_name, members)
+        group_out = ProductGroupOut(
+            normalized_name=result.normalized_name,
+            status=result.status,
+            canonical_name=result.canonical_name,
+            members=await _members_out(result.members),
+        )
+        (ready_groups if result.status == "ready" else blocked_groups).append(group_out)
+
+    possible_duplicates: list[PossibleDuplicateOut] = []
+    for key_a, key_b, similarity in find_possible_duplicates(list(normalized_groups.keys())):
+        possible_duplicates.append(
+            PossibleDuplicateOut(
+                similarity=round(similarity, 3),
+                group_a=await _members_out(normalized_groups[key_a]),
+                group_b=await _members_out(normalized_groups[key_b]),
+            )
+        )
+
+    return ProductGroupingOut(ready_groups=ready_groups, blocked_groups=blocked_groups, possible_duplicates=possible_duplicates)
 
 
 def _get_product_and_item(db: Session, product_id: UUID) -> tuple[ConfirmedProduct, IntakeItem]:

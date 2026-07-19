@@ -349,3 +349,73 @@ button.active {
   gap: 1rem;
   margin-top: 1.25rem;
 }
+
+.grouping-bucket {
+  margin-bottom: 2rem;
+}
+
+.grouping-hint {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+.grouping-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.grouping-canonical {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.grouping-duplicate-pair {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.grouping-duplicate-pair .grouping-members {
+  flex: 1;
+  min-width: 200px;
+}
+
+.grouping-members {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.grouping-member {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+}
+
+.grouping-member:hover {
+  border-color: var(--accent);
+}
+
+.grouping-member-highlight {
+  border-color: #d33;
+}
+
+.grouping-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.grouping-meta {
+  font-size: 0.85rem;
+  color: var(--text);
+}

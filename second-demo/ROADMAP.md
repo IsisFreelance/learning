@@ -9,7 +9,7 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
 
 ## Status
 
-**Phase 0 through Phase 4 done. Next up: Phase 5 (stretch).**
+**Phase 0 through Phase 5 done. Next up: Phase 6 (stretch).**
 
 Live: https://second-demo-pi.vercel.app/ (frontend) talks to
 https://docker-demo-obpu.onrender.com (backend — Docker runtime on
@@ -19,9 +19,10 @@ after ~15 min idle, first load after that can take 30-60s) which talks
 to Neon Postgres and Supabase Storage (private bucket, signed URLs).
 Full upload → thumbnail → queue → review → confirm (with source tags and
 the override-reason escape hatch) → `confirmed_products` → browse/search/
-filter/sort/edit/delete/export flow confirmed working end to end, not
-just locally. The entire app now sits behind a single hardcoded admin
-login (Phase 4) — no more open, unauthenticated access.
+filter/sort/edit/delete/export → duplicate/near-duplicate review flow
+confirmed working end to end, not just locally. The entire app sits
+behind a single hardcoded admin login (Phase 4) — no more open,
+unauthenticated access.
 
 ## Tech stack
 
@@ -58,9 +59,22 @@ login (Phase 4) — no more open, unauthenticated access.
       live on different domains, and a bearer token sidesteps cross-site
       cookie flags entirely) now gates the *whole app*, not just this
       screen.
-- [ ] **Phase 5 — Grouping & normalization** *(stretch)*. Deterministic
-      same-product/variant detection, canonical naming, grouped preview
-      with conflicts/warnings/ready-or-blocked.
+- [x] **Phase 5 — Grouping & normalization** *(stretch)*. Deterministic
+      same-product duplicate detection, canonical naming, grouped preview
+      with conflicts/warnings/ready-or-blocked — read-only (no merges, no
+      new tables; this is a report over existing `confirmed_products`
+      rows, not a data-changing action). Products with an identical
+      normalized name (whitespace/case/punctuation-insensitive) group
+      automatically: same price across the group → **ready**, with a
+      canonical spelling chosen from whichever row was most recently
+      confirmed or edited; different price → **blocked**, needs a human
+      decision. Near-but-not-identical names (e.g. a likely OCR misread)
+      surface separately as **possible duplicates** via a fuzzy pass
+      (`difflib.SequenceMatcher`, stdlib — no new dependency), never
+      auto-grouped. New `backend/app/normalization.py` (pure functions,
+      fully unit-tested) + `GET /confirmed-products/groups` + a "Review
+      Duplicates" tab reusing the existing product-edit screen to resolve
+      anything flagged.
 - [ ] **Phase 6 — Persisted normalization audit** *(stretch)*. Saved run
       snapshots, filterable review UI, CSV export of a run.
 - [ ] **Phase 7 — Catalog/export preparation** *(stretch)*. Preflight
@@ -92,6 +106,7 @@ login (Phase 4) — no more open, unauthenticated access.
 - **A Starlette quirk: registering an exception handler for the bare `Exception` class (or status 500) does *not* restore CORS headers on an unhandled error** — Starlette special-cases that registration onto `ServerErrorMiddleware`, which sits *outside* `CORSMiddleware` in the middleware stack, so the response it returns still skips the CORS layer entirely and the browser reports a misleading "CORS blocked" error instead of the real 500. A handler registered for a *specific* exception type (e.g. this app's new `StorageError` in `app/storage.py`/`app/main.py`) doesn't get that special-casing and works correctly. Worth remembering for any future "catch-all" error handling — target specific exception types, not the bare `Exception` class, if CORS-correct error responses matter.
 - **Supabase's signed-URL API occasionally drops the connection mid-request** (`httpx.RemoteProtocolError: Server disconnected`) when several are requested at once — e.g. loading a page of 20 items signs 40 URLs (image + thumbnail each) concurrently via `asyncio.gather`. `app/storage.py`'s `create_signed_url` now retries once before giving up. Revisit if this app ever needs to load noticeably more items per page than it does today.
 - **On this Windows dev machine, `uvicorn --reload` sometimes announces "Reloading..." for a changed file but silently keeps serving the old code** (confirmed via mismatched line numbers in a traceback after a reload event) — a WatchFiles quirk, not a code bug. When verifying a fix actually took effect, prefer a full manual stop/restart of the dev server over trusting `--reload`.
+- **`GET /confirmed-products/groups`'s possible-duplicates pass is an O(n²) pairwise string comparison** across every distinct product name (`app/normalization.py`'s `find_possible_duplicates`) — fine at this app's current scale (low hundreds of products at most), flagged as a non-issue in Phase 5's security review for the same reason, but would need a smarter approach (blocking/indexing similar names before comparing) if the catalog ever grows by an order of magnitude or more.
 
 ## How to resume this project in a new conversation
 
