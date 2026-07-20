@@ -1,13 +1,9 @@
 import asyncio
-import csv
-import io
 from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import Response
-from openpyxl import Workbook
 from sqlalchemy import asc, desc, or_, select
 from sqlalchemy.orm import Session
 
@@ -15,7 +11,7 @@ from app.auth import require_admin
 from app.confirm import FieldValidationError, resolve_field
 from app.database import get_db
 from app.models import ConfirmedProduct, IntakeItem
-from app.normalization import ProductRecord, classify_group, find_possible_duplicates, group_by_name
+from app.normalization import ProductRecord, compute_grouping
 from app.rate_limit import RateLimitExceeded, check_and_increment, client_ip
 from app.schemas import (
     ConfirmedProductDetailOut,
@@ -25,6 +21,7 @@ from app.schemas import (
     ProductGroupingOut,
     ProductGroupOut,
 )
+from app.spreadsheet import build_spreadsheet_response, escape_for_spreadsheet
 from app.storage import create_signed_url
 
 router = APIRouter(prefix="/confirmed-products", dependencies=[Depends(require_admin)])
@@ -99,27 +96,13 @@ async def list_confirmed_products(
 
 _EXPORT_HEADERS = ["Product name", "Price", "Name source", "Price source", "Confirmed at", "Updated at"]
 
-# Excel/Sheets/LibreOffice treat a cell starting with any of these as a
-# formula, not text (CWE-1236) -- product_name/price can come straight from
-# OCR reading a photographed label, so a crafted or misread label could plant
-# a live formula (e.g. "=HYPERLINK(...)") that runs when the export is
-# opened. Prefixing with a leading apostrophe forces every spreadsheet
-# program to treat the cell as plain text instead of evaluating it.
-_FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
-
-
-def _escape_for_spreadsheet(value: str) -> str:
-    if value.startswith(_FORMULA_TRIGGER_CHARS):
-        return f"'{value}"
-    return value
-
 
 def _export_rows(db: Session, q: str | None, source: str | None, sort: str, order: str):
     stmt = _build_sorted_query(q, source, sort, order)
     for product, _item in db.execute(stmt).all():
         yield [
-            _escape_for_spreadsheet(product.product_name or ""),
-            _escape_for_spreadsheet(product.price or ""),
+            escape_for_spreadsheet(product.product_name or ""),
+            escape_for_spreadsheet(product.price or ""),
             product.product_name_source,
             product.price_source,
             product.confirmed_at.isoformat(),
@@ -148,32 +131,36 @@ def export_confirmed_products(
         raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
 
     rows = list(_export_rows(db, q, source, sort, order))
+    return build_spreadsheet_response(format, _EXPORT_HEADERS, rows, "confirmed_products", "Confirmed products")
 
-    if format == "csv":
-        buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(_EXPORT_HEADERS)
-        writer.writerows(rows)
-        return Response(
-            content=buffer.getvalue(),
-            media_type="text/csv",
-            headers={"Content-Disposition": 'attachment; filename="confirmed_products.csv"'},
+
+def fetch_all_confirmed_records(
+    db: Session,
+) -> tuple[dict[UUID, tuple[ConfirmedProduct, IntakeItem]], list[ProductRecord]]:
+    """Shared by the live /groups report and Phase 6's saved runs -- one
+    place that decides how a ConfirmedProduct+IntakeItem row becomes a
+    normalization.ProductRecord."""
+    rows = db.execute(select(ConfirmedProduct, IntakeItem).join(IntakeItem, ConfirmedProduct.intake_item_id == IntakeItem.id)).all()
+    row_by_id = {product.id: (product, item) for product, item in rows}
+    records = [
+        ProductRecord(
+            id=product.id,
+            product_name=product.product_name,
+            product_name_source=product.product_name_source,
+            price=product.price,
+            price_source=product.price_source,
+            confirmed_at=product.confirmed_at,
+            updated_at=product.updated_at,
         )
+        for product, _item in rows
+    ]
+    return row_by_id, records
 
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Confirmed products"
-    sheet.append(_EXPORT_HEADERS)
-    for row in rows:
-        sheet.append(row)
 
-    buffer = io.BytesIO()
-    workbook.save(buffer)
-    return Response(
-        content=buffer.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="confirmed_products.xlsx"'},
-    )
+async def members_out(
+    row_by_id: dict[UUID, tuple[ConfirmedProduct, IntakeItem]], members: list[ProductRecord]
+) -> list[ConfirmedProductListItemOut]:
+    return await asyncio.gather(*(_to_list_item(*row_by_id[member.id]) for member in members))
 
 
 @router.get("/groups", response_model=ProductGroupingOut)
@@ -186,47 +173,27 @@ async def get_confirmed_product_groups(request: Request, db: Session = Depends(g
     except RateLimitExceeded:
         raise HTTPException(status_code=429, detail="Too many requests — please wait a few minutes and try again.")
 
-    rows = db.execute(select(ConfirmedProduct, IntakeItem).join(IntakeItem, ConfirmedProduct.intake_item_id == IntakeItem.id)).all()
-    row_by_id = {product.id: (product, item) for product, item in rows}
-    records = [
-        ProductRecord(
-            id=product.id,
-            product_name=product.product_name,
-            price=product.price,
-            confirmed_at=product.confirmed_at,
-            updated_at=product.updated_at,
+    row_by_id, records = fetch_all_confirmed_records(db)
+    grouping = compute_grouping(records)
+
+    async def _group_out(group) -> ProductGroupOut:
+        return ProductGroupOut(
+            normalized_name=group.normalized_name,
+            status=group.status,
+            canonical_name=group.canonical_name,
+            members=await members_out(row_by_id, group.members),
         )
-        for product, _item in rows
+
+    ready_groups = [await _group_out(g) for g in grouping.ready_groups]
+    blocked_groups = [await _group_out(g) for g in grouping.blocked_groups]
+    possible_duplicates = [
+        PossibleDuplicateOut(
+            similarity=round(similarity, 3),
+            group_a=await members_out(row_by_id, members_a),
+            group_b=await members_out(row_by_id, members_b),
+        )
+        for _key_a, _key_b, similarity, members_a, members_b in grouping.possible_duplicates
     ]
-
-    normalized_groups = group_by_name(records)
-
-    async def _members_out(members: list[ProductRecord]) -> list[ConfirmedProductListItemOut]:
-        return await asyncio.gather(*(_to_list_item(*row_by_id[member.id]) for member in members))
-
-    ready_groups: list[ProductGroupOut] = []
-    blocked_groups: list[ProductGroupOut] = []
-    for normalized_name, members in normalized_groups.items():
-        if len(members) < 2:
-            continue  # nothing to compare a lone product against
-        result = classify_group(normalized_name, members)
-        group_out = ProductGroupOut(
-            normalized_name=result.normalized_name,
-            status=result.status,
-            canonical_name=result.canonical_name,
-            members=await _members_out(result.members),
-        )
-        (ready_groups if result.status == "ready" else blocked_groups).append(group_out)
-
-    possible_duplicates: list[PossibleDuplicateOut] = []
-    for key_a, key_b, similarity in find_possible_duplicates(list(normalized_groups.keys())):
-        possible_duplicates.append(
-            PossibleDuplicateOut(
-                similarity=round(similarity, 3),
-                group_a=await _members_out(normalized_groups[key_a]),
-                group_b=await _members_out(normalized_groups[key_b]),
-            )
-        )
 
     return ProductGroupingOut(ready_groups=ready_groups, blocked_groups=blocked_groups, possible_duplicates=possible_duplicates)
 

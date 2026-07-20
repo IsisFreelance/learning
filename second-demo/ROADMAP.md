@@ -9,7 +9,7 @@ full context: `C:\Users\Usuario\.claude\plans\snoopy-juggling-hejlsberg.md`
 
 ## Status
 
-**Phase 0 through Phase 5 done. Next up: Phase 6 (stretch).**
+**Phase 0 through Phase 6 done. Phase 7 deliberately skipped — see below.**
 
 Live: https://second-demo-pi.vercel.app/ (frontend) talks to
 https://docker-demo-obpu.onrender.com (backend — Docker runtime on
@@ -19,10 +19,10 @@ after ~15 min idle, first load after that can take 30-60s) which talks
 to Neon Postgres and Supabase Storage (private bucket, signed URLs).
 Full upload → thumbnail → queue → review → confirm (with source tags and
 the override-reason escape hatch) → `confirmed_products` → browse/search/
-filter/sort/edit/delete/export → duplicate/near-duplicate review flow
-confirmed working end to end, not just locally. The entire app sits
-behind a single hardcoded admin login (Phase 4) — no more open,
-unauthenticated access.
+filter/sort/edit/delete/export → duplicate/near-duplicate review → save
+and browse a persisted audit trail of that review flow confirmed working
+end to end, not just locally. The entire app sits behind a single
+hardcoded admin login (Phase 4) — no more open, unauthenticated access.
 
 ## Tech stack
 
@@ -75,10 +75,27 @@ unauthenticated access.
       fully unit-tested) + `GET /confirmed-products/groups` + a "Review
       Duplicates" tab reusing the existing product-edit screen to resolve
       anything flagged.
-- [ ] **Phase 6 — Persisted normalization audit** *(stretch)*. Saved run
-      snapshots, filterable review UI, CSV export of a run.
-- [ ] **Phase 7 — Catalog/export preparation** *(stretch)*. Preflight
-      validation, dry-run preview export — no real external write.
+- [x] **Phase 6 — Persisted normalization audit** *(stretch)*. Explicit
+      "Save this check" button snapshots the live Phase 5 report into a
+      new `normalization_runs` table — a true point-in-time record
+      (product name/price/source/timestamps frozen as they were, even if
+      the product is edited afterward). Deliberately does *not* store
+      thumbnail URLs — Supabase's signed URLs expire after an hour, so
+      a saved run's thumbnails are re-signed from the *current* photo
+      every time it's viewed instead (best-effort: a since-deleted
+      product just shows no thumbnail, the rest of the snapshot stays
+      intact). "Saved runs" toggle inside the existing "Review
+      Duplicates" tab lists past runs by date, and each one can be
+      exported as CSV/XLSX (reusing Phase 4's formula-injection guard,
+      pulled out into a shared `backend/app/spreadsheet.py` alongside the
+      confirmed-products export). New `backend/app/routers/
+      normalization_runs.py`, mounted at its own `/normalization-runs`
+      prefix specifically to avoid any route-ordering conflict with
+      `/confirmed-products/{product_id}`.
+- [~] **Phase 7 — Catalog/export preparation** *(stretch, skipped)*.
+      Preflight validation, dry-run preview export — no real external
+      write. Deliberately skipped in favor of going straight to Phase 6;
+      not built, can be picked back up later if wanted.
 
 ## Known issues / follow-ups
 

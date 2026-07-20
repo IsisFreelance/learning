@@ -110,6 +110,47 @@ class ProductGroupingOut(BaseModel):
     possible_duplicates: list[PossibleDuplicateOut]
 
 
+class NormalizationRunMemberOut(BaseModel):
+    product_id: UUID
+    product_name: str | None
+    product_name_source: str
+    price: str | None
+    price_source: str
+    confirmed_at: datetime
+    updated_at: datetime | None
+    # None means the product behind this snapshot entry was deleted after
+    # the run was saved -- everything else in the snapshot is still valid,
+    # there's just no current photo left to sign a thumbnail from.
+    thumbnail_url: str | None
+
+
+class NormalizationRunGroupOut(BaseModel):
+    normalized_name: str
+    status: str
+    canonical_name: str | None
+    members: list[NormalizationRunMemberOut]
+
+
+class NormalizationRunPossibleDuplicateOut(BaseModel):
+    similarity: float
+    group_a: list[NormalizationRunMemberOut]
+    group_b: list[NormalizationRunMemberOut]
+
+
+class NormalizationRunSummaryOut(BaseModel):
+    id: UUID
+    created_at: datetime
+    ready_count: int
+    blocked_count: int
+    possible_duplicate_count: int
+
+
+class NormalizationRunDetailOut(NormalizationRunSummaryOut):
+    ready_groups: list[NormalizationRunGroupOut]
+    blocked_groups: list[NormalizationRunGroupOut]
+    possible_duplicates: list[NormalizationRunPossibleDuplicateOut]
+
+
 class ConfirmedProductDetailOut(BaseModel):
     id: UUID
     intake_item_id: UUID

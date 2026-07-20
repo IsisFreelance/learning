@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import get_db
 from app.routers.admin import router as admin_router
 from app.routers.intake import router as intake_router
+from app.routers.normalization_runs import router as normalization_runs_router
 from app.routers.products import router as products_router
 from app.storage import StorageError
 
@@ -59,6 +60,7 @@ async def limit_json_body_size(request: Request, call_next):
 app.include_router(admin_router)
 app.include_router(intake_router)
 app.include_router(products_router)
+app.include_router(normalization_runs_router)
 
 
 @app.get("/health")

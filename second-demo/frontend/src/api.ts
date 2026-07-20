@@ -274,3 +274,77 @@ export async function getConfirmedProductGroups(): Promise<ProductGrouping> {
   if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to load duplicate review (HTTP ${res.status}).`))
   return res.json()
 }
+
+export interface NormalizationRunMember {
+  product_id: string
+  product_name: string | null
+  product_name_source: string
+  price: string | null
+  price_source: string
+  confirmed_at: string
+  updated_at: string | null
+  // null means the product behind this snapshot entry was deleted after
+  // the run was saved -- there's no current photo to show a thumbnail for.
+  thumbnail_url: string | null
+}
+
+export interface NormalizationRunGroup {
+  normalized_name: string
+  status: 'ready' | 'blocked'
+  canonical_name: string | null
+  members: NormalizationRunMember[]
+}
+
+export interface NormalizationRunPossibleDuplicate {
+  similarity: number
+  group_a: NormalizationRunMember[]
+  group_b: NormalizationRunMember[]
+}
+
+export interface NormalizationRunSummary {
+  id: string
+  created_at: string
+  ready_count: number
+  blocked_count: number
+  possible_duplicate_count: number
+}
+
+export interface NormalizationRunDetail extends NormalizationRunSummary {
+  ready_groups: NormalizationRunGroup[]
+  blocked_groups: NormalizationRunGroup[]
+  possible_duplicates: NormalizationRunPossibleDuplicate[]
+}
+
+export async function saveNormalizationRun(): Promise<NormalizationRunDetail> {
+  const res = await fetch(`${API_BASE_URL}/normalization-runs`, { method: 'POST', headers: authHeaders() })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to save this check (HTTP ${res.status}).`))
+  return res.json()
+}
+
+export async function listNormalizationRuns(): Promise<NormalizationRunSummary[]> {
+  const res = await fetch(`${API_BASE_URL}/normalization-runs`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to load saved runs (HTTP ${res.status}).`))
+  return res.json()
+}
+
+export async function getNormalizationRun(id: string): Promise<NormalizationRunDetail> {
+  const res = await fetch(`${API_BASE_URL}/normalization-runs/${id}`, { headers: authHeaders() })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to load this run (HTTP ${res.status}).`))
+  return res.json()
+}
+
+export async function exportNormalizationRun(id: string, format: 'csv' | 'xlsx'): Promise<void> {
+  const url = new URL(`${API_BASE_URL}/normalization-runs/${id}/export`)
+  url.searchParams.set('format', format)
+
+  const res = await fetch(url, { headers: authHeaders() })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Export failed (HTTP ${res.status}).`))
+
+  const blob = await res.blob()
+  const objectUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = `normalization_run.${format}`
+  link.click()
+  URL.revokeObjectURL(objectUrl)
+}

@@ -1,9 +1,12 @@
+import json
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.normalization import (
     ProductRecord,
+    build_run_payload,
     classify_group,
+    compute_grouping,
     find_possible_duplicates,
     group_by_name,
     normalize_name,
@@ -13,8 +16,16 @@ from app.normalization import (
 NOW = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
-def make_product(name, price, confirmed_at=NOW, updated_at=None):
-    return ProductRecord(id=uuid4(), product_name=name, price=price, confirmed_at=confirmed_at, updated_at=updated_at)
+def make_product(name, price, confirmed_at=NOW, updated_at=None, product_name_source="manual", price_source="manual"):
+    return ProductRecord(
+        id=uuid4(),
+        product_name=name,
+        product_name_source=product_name_source,
+        price=price,
+        price_source=price_source,
+        confirmed_at=confirmed_at,
+        updated_at=updated_at,
+    )
 
 
 def test_normalize_name_collapses_whitespace_and_case():
@@ -102,3 +113,73 @@ def test_find_possible_duplicates_ignores_dissimilar_names():
 def test_find_possible_duplicates_respects_custom_threshold():
     pairs = find_possible_duplicates(["abc", "abd"], threshold=0.99)
     assert pairs == []
+
+
+def test_compute_grouping_sorts_into_ready_blocked_and_possible_duplicates():
+    ready_a = make_product("Widget Pro 500", "19.99")
+    ready_b = make_product("WIDGET PRO 500", "19.99")
+    blocked_a = make_product("Gadget X1", "10.00")
+    blocked_b = make_product("GADGET X1", "12.00")
+    near_a = make_product("Sprocket Deluxe", "5.00")
+    near_b = make_product("Sprocket Delux", "5.00")
+    lonely = make_product("Nothing Else Like This", "1.00")
+
+    grouping = compute_grouping([ready_a, ready_b, blocked_a, blocked_b, near_a, near_b, lonely])
+
+    assert len(grouping.ready_groups) == 1
+    assert grouping.ready_groups[0].normalized_name == "widget pro 500"
+    assert len(grouping.blocked_groups) == 1
+    assert grouping.blocked_groups[0].normalized_name == "gadget x1"
+    assert len(grouping.possible_duplicates) == 1
+    key_a, key_b, similarity, members_a, members_b = grouping.possible_duplicates[0]
+    assert {key_a, key_b} == {"sprocket deluxe", "sprocket delux"}
+    assert similarity >= 0.85
+    assert members_a[0].product_name in ("Sprocket Deluxe", "Sprocket Delux")
+    assert members_b[0].product_name in ("Sprocket Deluxe", "Sprocket Delux")
+
+
+def test_build_run_payload_is_json_safe_and_round_trips_member_fields():
+    a = make_product("Widget Pro 500", "19.99", product_name_source="ocr", price_source="manual")
+    b = make_product("WIDGET PRO 500", "19.99", updated_at=NOW + timedelta(days=1))
+    grouping = compute_grouping([a, b])
+
+    payload = build_run_payload(grouping)
+
+    # Must be plain JSON-safe types (str/int/float/bool/None/list/dict) --
+    # this is what actually gets stored in the JSONB column.
+    json.dumps(payload)
+
+    assert payload["blocked_groups"] == []
+    assert payload["possible_duplicates"] == []
+    assert len(payload["ready_groups"]) == 1
+
+    group = payload["ready_groups"][0]
+    assert group["status"] == "ready"
+    assert group["canonical_name"] == "WIDGET PRO 500"  # b, most recently updated
+
+    member_ids = {m["product_id"] for m in group["members"]}
+    assert member_ids == {str(a.id), str(b.id)}
+
+    member_a = next(m for m in group["members"] if m["product_id"] == str(a.id))
+    assert member_a["product_name"] == "Widget Pro 500"
+    assert member_a["product_name_source"] == "ocr"
+    assert member_a["price_source"] == "manual"
+    assert member_a["confirmed_at"] == NOW.isoformat()
+    assert member_a["updated_at"] is None
+
+    member_b = next(m for m in group["members"] if m["product_id"] == str(b.id))
+    assert member_b["updated_at"] == (NOW + timedelta(days=1)).isoformat()
+
+
+def test_build_run_payload_includes_possible_duplicates_with_both_sides():
+    a = make_product("Sprocket Deluxe", "5.00")
+    b = make_product("Sprocket Delux", "5.00")
+    grouping = compute_grouping([a, b])
+
+    payload = build_run_payload(grouping)
+
+    assert len(payload["possible_duplicates"]) == 1
+    duplicate = payload["possible_duplicates"][0]
+    assert duplicate["similarity"] >= 0.85
+    all_ids = {m["product_id"] for m in duplicate["group_a"]["members"]} | {m["product_id"] for m in duplicate["group_b"]["members"]}
+    assert all_ids == {str(a.id), str(b.id)}

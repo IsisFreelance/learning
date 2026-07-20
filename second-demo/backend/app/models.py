@@ -133,3 +133,24 @@ class ConfirmedProduct(Base):
     # Set only when a Phase 4 edit changes product_name/price after
     # confirmation -- null means "never edited since confirming."
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NormalizationRun(Base):
+    __tablename__ = "normalization_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    # Denormalized so the run-history list can show counts without
+    # deserializing every row's payload.
+    ready_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    blocked_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    possible_duplicate_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # A true point-in-time snapshot: product_name/price/source/timestamps
+    # as they were at save time, frozen even if the product is edited
+    # later. Deliberately does NOT include a thumbnail_url -- Supabase's
+    # signed URLs (app/storage.py) expire after an hour, so any URL saved
+    # here would break; thumbnails are re-signed fresh from the current
+    # photo every time a saved run is viewed instead.
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
